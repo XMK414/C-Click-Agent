@@ -35,4 +35,48 @@ export default [
       'eqeqeq': ['error', 'always'],
     },
   },
+  {
+    // tsconfig.json's `lib` includes DOM (needed so app/overlay + app/panel
+    // typecheck) even though it's a single project-wide config — that makes
+    // DOM globals *visible* to Node-only code (gateway/**, app/main.ts,
+    // app/preload.ts, mcp-servers/**) without erroring. This block closes that
+    // leak at lint time: any of these files that actually reference a DOM
+    // global fails lint, without the project-references build surgery a real
+    // tsconfig split would need. Renderer files (and their jsdom tests) are
+    // exempted below since DOM globals are exactly what they're for.
+    files: ['**/*.ts'],
+    ignores: [
+      'node_modules/**',
+      'app/platform/native/**',
+      'app/overlay/**',
+      'app/panel/**',
+      'tests/overlay/**',
+      'tests/panel/**',
+    ],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+    },
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'document',
+          'window',
+          'navigator',
+          'localStorage',
+          'sessionStorage',
+          'alert',
+          'confirm',
+          'prompt',
+        ].map((name) => ({
+          name,
+          message:
+            `'${name}' is a DOM global — this file runs in main/gateway/Node, ` +
+            'not a renderer. If this is genuinely renderer code, move it under ' +
+            'app/overlay/** or app/panel/**.',
+        })),
+      ],
+    },
+  },
 ];
