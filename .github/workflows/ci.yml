@@ -40,3 +40,24 @@ jobs:
       # - run: npm run build:native:win   # enable in slice 1.8 (windows-latest)
       # - run: npm run build:native:mac   # enable in slice 2.1 (macos-latest)
       # - run: npm run test:native        # bridge wrapper + safety tests
+
+  # Playwright-Electron e2e: asserts runtime properties jsdom/unit tests
+  # structurally cannot (click-through, real renderer isolation, CSP
+  # enforcement, cursor mirroring). windows-latest/macos-latest runners have a
+  # real interactive desktop session, so Electron runs headed with no xvfb
+  # needed. Kept out of the fast core lane entirely — its own job/command.
+  e2e:
+    needs: core
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e

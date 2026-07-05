@@ -18,7 +18,7 @@
     "noEmit": true,
     "isolatedModules": true
   },
-  "include": ["app", "gateway", "mcp-servers", "tests"],
+  "include": ["app", "gateway", "mcp-servers", "tests", "e2e"],
   "exclude": [
     "node_modules",
     "app/platform/native",

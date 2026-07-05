@@ -19,6 +19,7 @@ import { guidanceResponseSchema, safeParse } from './ipc/schemas.js';
 import { createCursorMirror } from './overlay/cursor-mirror.js';
 import { buildRenderModel, type DisplayBounds } from './overlay/render-model.js';
 import { createGatewayServer } from '../gateway/server.js';
+import { createPassStore } from '../gateway/policy/pass-store.js';
 import { PROVIDERS } from '../gateway/providers/registry.js';
 import { askAgent, getGateStatus, getQuiz, submitQuiz, type GatewayClientConfig } from './models/router.js';
 
@@ -39,6 +40,52 @@ let overlayWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
 let gatewayConfig: GatewayClientConfig | null = null;
 
+// --- e2e-only introspection + control hook (Playwright, specs/e2e-electron-scope.md) ---
+//
+// Guarded behind CC_E2E so it is INERT (never populates, never reachable) unless a test
+// explicitly opts in. This exposes window CONFIG + narrow test controls only — never
+// secrets, never the gateway token/URL. There is no bundler/dead-code-elimination step
+// in this repo yet, so "absent in production" means "guarded and never executes/exposes
+// anything," not physically stripped from the shipped file — acceptable since the guard
+// is a single env-var check with no side effects when false.
+const E2E = process.env.CC_E2E === '1';
+
+interface E2EWindowInfo {
+  transparent?: boolean;
+  frame?: boolean;
+  alwaysOnTop?: boolean;
+  roundedCorners?: boolean;
+  resizable?: boolean;
+  focusable?: boolean;
+  webPreferences?: { contextIsolation?: boolean; sandbox?: boolean; nodeIntegration?: boolean };
+  ignoreMouseEvents?: { called: boolean; ignore?: boolean; forward?: boolean };
+}
+
+interface E2EHooks {
+  windows: Partial<Record<'overlay' | 'panel', E2EWindowInfo>>;
+  feedCursor(x: number, y: number): void;
+  triggerNextState(): void;
+  pushGuidance(raw: unknown): void;
+}
+
+declare global {
+  var __ccE2E: E2EHooks | undefined;
+}
+
+if (E2E) {
+  globalThis.__ccE2E = {
+    windows: {},
+    feedCursor: () => undefined,
+    triggerNextState: () => undefined,
+    pushGuidance: () => undefined,
+  };
+}
+
+function recordWindowIntrospection(name: 'overlay' | 'panel', info: E2EWindowInfo): void {
+  if (!E2E) return;
+  globalThis.__ccE2E!.windows[name] = info;
+}
+
 function getDisplayBounds(): DisplayBounds[] {
   return screen.getAllDisplays().map((d, i) => ({
     id: i,
@@ -51,7 +98,7 @@ function getDisplayBounds(): DisplayBounds[] {
 
 function createOverlayWindow(): BrowserWindow {
   const primary = screen.getPrimaryDisplay();
-  const win = new BrowserWindow({
+  const options = {
     x: primary.bounds.x,
     y: primary.bounds.y,
     width: primary.bounds.width,
@@ -74,10 +121,25 @@ function createOverlayWindow(): BrowserWindow {
       nodeIntegration: false,
       preload: join(here, 'preload.js'),
     },
-  });
+  };
+  const win = new BrowserWindow(options);
 
   win.setIgnoreMouseEvents(true, { forward: true });
   win.setMenu(null);
+  recordWindowIntrospection('overlay', {
+    transparent: options.transparent,
+    frame: options.frame,
+    alwaysOnTop: options.alwaysOnTop,
+    roundedCorners: options.roundedCorners,
+    resizable: options.resizable,
+    focusable: options.focusable,
+    webPreferences: {
+      contextIsolation: options.webPreferences.contextIsolation,
+      sandbox: options.webPreferences.sandbox,
+      nodeIntegration: options.webPreferences.nodeIntegration,
+    },
+    ignoreMouseEvents: { called: true, ignore: true, forward: true },
+  });
 
   // Overlay never navigates and never opens a new window (no remote content, ever).
   win.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -90,7 +152,7 @@ function createOverlayWindow(): BrowserWindow {
 /** Focusable strip/panel window — a SEPARATE window from the overlay, NOT click-through. */
 function createPanelWindow(): BrowserWindow {
   const primary = screen.getPrimaryDisplay();
-  const win = new BrowserWindow({
+  const options = {
     x: primary.bounds.x + 24,
     y: Math.round(primary.bounds.y + primary.bounds.height / 2 - 72),
     width: 380,
@@ -99,6 +161,7 @@ function createPanelWindow(): BrowserWindow {
     frame: false,
     alwaysOnTop: true,
     resizable: false,
+    focusable: true,
     skipTaskbar: true,
     hasShadow: false,
     roundedCorners: false,
@@ -108,9 +171,24 @@ function createPanelWindow(): BrowserWindow {
       nodeIntegration: false,
       preload: join(here, 'preload.js'),
     },
-  });
+  };
+  const win = new BrowserWindow(options);
 
   win.setMenu(null);
+  recordWindowIntrospection('panel', {
+    transparent: options.transparent,
+    frame: options.frame,
+    alwaysOnTop: options.alwaysOnTop,
+    roundedCorners: options.roundedCorners,
+    resizable: options.resizable,
+    focusable: options.focusable,
+    webPreferences: {
+      contextIsolation: options.webPreferences.contextIsolation,
+      sandbox: options.webPreferences.sandbox,
+      nodeIntegration: options.webPreferences.nodeIntegration,
+    },
+    ignoreMouseEvents: { called: false },
+  });
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
@@ -166,9 +244,37 @@ function startDevGuidanceDemo(win: BrowserWindow): void {
   setTimeout(() => dispatchGuidance(win, sample), 3000);
 }
 
+/**
+ * e2e mode replaces the real-cursor poll + wall-clock timers with directly
+ * callable, deterministic controls (still routed through the same
+ * cursor-mirror change-detection and the same dispatchGuidance validation
+ * path — only the trigger source differs).
+ */
+function setupE2EControls(overlay: BrowserWindow): void {
+  const mirror = createCursorMirror();
+  let stateIndex = 0;
+
+  globalThis.__ccE2E!.feedCursor = (x: number, y: number): void => {
+    const emit = mirror.feed({ x, y }, Date.now());
+    if (emit) overlay.webContents.send(IPC_CHANNELS.CURSOR_POS_UPDATE, emit);
+  };
+  globalThis.__ccE2E!.triggerNextState = (): void => {
+    overlay.webContents.send(IPC_CHANNELS.CURSOR_STATE_UPDATE, CURSOR_STATES[stateIndex % CURSOR_STATES.length]);
+    stateIndex += 1;
+  };
+  globalThis.__ccE2E!.pushGuidance = (raw: unknown): void => {
+    dispatchGuidance(overlay, raw);
+  };
+}
+
 /** Starts the loopback gateway and records the token + URL for the IPC handlers below. */
 async function startGateway(): Promise<GatewayClientConfig> {
-  const gw = createGatewayServer();
+  // CC_DATA_DIR overrides the pass-store location — used by the e2e harness so
+  // each test launch gets a hermetic, disposable data dir instead of writing
+  // into a real user's persistent app-data location (which would otherwise
+  // make gate-pass state leak across separate app launches/test runs).
+  const passStore = process.env.CC_DATA_DIR ? createPassStore(process.env.CC_DATA_DIR) : undefined;
+  const gw = createGatewayServer(passStore ? { passStore } : {});
   const server = await gw.listen(0); // ephemeral port, 127.0.0.1 only
   const address = server.address() as AddressInfo;
   return { baseUrl: 'http://127.0.0.1:' + String(address.port), token: gw.token };
@@ -224,8 +330,6 @@ void app.whenReady().then(async () => {
   registerPanelHandlers();
 
   overlayWindow = createOverlayWindow();
-  startCursorMirror(overlayWindow);
-
   panelWindow = createPanelWindow();
   globalShortcut.register(PANEL_SUMMON_SHORTCUT, () => {
     if (!panelWindow) return;
@@ -233,9 +337,16 @@ void app.whenReady().then(async () => {
     else panelWindow.show();
   });
 
-  if (process.env.NODE_ENV !== 'production') {
-    startDevStateCycler(overlayWindow);
-    startDevGuidanceDemo(overlayWindow);
+  if (E2E) {
+    // Deterministic, directly-callable controls replace the real cursor poll
+    // and wall-clock demo timers — see setupE2EControls().
+    setupE2EControls(overlayWindow);
+  } else {
+    startCursorMirror(overlayWindow);
+    if (process.env.NODE_ENV !== 'production') {
+      startDevStateCycler(overlayWindow);
+      startDevGuidanceDemo(overlayWindow);
+    }
   }
 
   app.on('activate', () => {

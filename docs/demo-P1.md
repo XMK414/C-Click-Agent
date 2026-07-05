@@ -22,10 +22,11 @@ Electron directly. Electron 43 loads an ESM `main.js` natively (this repo is
 `"type": "module"`), so there's no need to force `--module commonjs`:
 
 ```
-npx tsc -p tsconfig.json --outDir dist
+npx tsc -p tsconfig.json --outDir dist --noEmit false   # tsconfig.json sets noEmit:true; override it here
 cp app/overlay/overlay.html app/overlay/styles.css app/overlay/cursor-states.css dist/app/overlay/
 cp -r app/overlay/assets dist/app/overlay/
 cp app/panel/panel.html app/panel/styles.css dist/app/panel/
+cp -r gateway/policy/fixtures dist/gateway/policy/   # the signed manifest is data, not TS — tsc won't copy it
 npx electron dist/app/main.js
 ```
 

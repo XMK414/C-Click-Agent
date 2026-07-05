@@ -1,6 +1,9 @@
 node_modules/
 coverage/
 dist/
+dist-e2e/
+playwright-report/
+test-results/
 out/
 build/
 *.node

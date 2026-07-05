@@ -43,7 +43,9 @@ export default [
     // leak at lint time: any of these files that actually reference a DOM
     // global fails lint, without the project-references build surgery a real
     // tsconfig split would need. Renderer files (and their jsdom tests) are
-    // exempted below since DOM globals are exactly what they're for.
+    // exempted below since DOM globals are exactly what they're for. e2e/**
+    // is exempted too: window/document inside a page.evaluate() callback is
+    // serialized and runs IN the renderer, not in the Node test-runner process.
     files: ['**/*.ts'],
     ignores: [
       'node_modules/**',
@@ -52,6 +54,7 @@ export default [
       'app/panel/**',
       'tests/overlay/**',
       'tests/panel/**',
+      'e2e/**',
     ],
     languageOptions: {
       parser: tsparser,
