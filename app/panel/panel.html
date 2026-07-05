@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- app/panel/panel.html — collapsed strip + expanded control panel. Slice 1.5. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self';" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="strip"></div>
+    <section id="panel" hidden>
+      <input id="prompt" type="text" placeholder="Ask Click Click…" />
+      <select id="provider"></select>
+      <ul id="mcp-servers"></ul>
+      <ul id="recent"></ul>
+      <div id="confirm" hidden></div>
+    </section>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

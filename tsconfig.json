@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": false,
+    "noEmit": true,
+    "isolatedModules": true
+  },
+  "include": ["app", "gateway", "mcp-servers", "tests"],
+  "exclude": [
+    "node_modules",
+    "app/platform/native",
+    "app/overlay/*.html",
+    "app/panel/*.html"
+  ]
+}

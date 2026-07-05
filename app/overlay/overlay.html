@@ -1,0 +1,15 @@
+<!doctype html>
+<!-- app/overlay/overlay.html — transparent, click-through overlay. Slice 1.4. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- CSP: no remote, no inline eval. Model data is rendered via textContent only. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self';" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="buddy-cursor" aria-hidden="true"></div>
+    <div id="steps-container" role="status" aria-live="polite"></div>
+    <script type="module" src="overlay.js"></script>
+  </body>
+</html>

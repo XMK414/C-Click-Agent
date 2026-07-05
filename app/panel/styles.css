@@ -1,0 +1,7 @@
+/* app/panel/styles.css — glassmorphism strip/panel. Slice 1.5. */
+body { margin: 0; background: transparent; font: 13px system-ui, sans-serif; }
+#strip { width: 14px; height: 144px; border-radius: 8px; background: rgba(79,195,247,.35); transition: box-shadow .15s; }
+#strip:hover { box-shadow: 0 0 12px rgba(79,195,247,.6); }
+#panel { width: min(20vw, 360px); padding: 12px; border-radius: 12px;
+  background: rgba(20,20,24,.72); backdrop-filter: blur(12px); color: #fff;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35); }

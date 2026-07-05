@@ -1,0 +1,28 @@
+<!-- app/overlay/assets/buddy-cursor.svg
+     Buddy cursor, IDLE state. Slice 1.4.
+     - Silhouette: classic pointer arrow so it reads as "cursor" instantly.
+     - Hotspot: the tip at logical (1,1) in the 24x24 viewBox (set as the cursor
+       hotspot when applied; the overlay positions this point at the target).
+     - Legibility on ANY background: white outer stroke (halo) + gradient fill +
+       soft drop-shadow glow. The halo is what makes it survive on light AND dark.
+     - State color is applied at runtime by cursor-states.css (this file bakes the
+       IDLE brand gradient as the default/exported asset). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Click Click cursor">
+  <defs>
+    <linearGradient id="cc-idle" x1="2" y1="2" x2="16" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="0.5" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#D946EF"/>
+    </linearGradient>
+    <filter id="cc-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.2" flood-color="#6366F1" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <!-- white halo (outer) -->
+  <path d="M1 1 L1 20 L6 15 L9 22 L12 20.5 L9 14 L16 14 Z"
+        fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- gradient body (inner) -->
+  <path d="M1 1 L1 20 L6 15 L9 22 L12 20.5 L9 14 L16 14 Z"
+        fill="url(#cc-idle)" stroke="#0B0B10" stroke-width="0.5" stroke-linejoin="round"
+        filter="url(#cc-glow)"/>
+</svg>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Click Click — Buddy Cursor States</title>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; background: #0b0b10; color: #e5e7eb; }
+  h1 { font-size: 18px; padding: 20px 24px 0; }
+  p.sub { padding: 4px 24px 16px; color: #9ca3af; margin: 0; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: #1f2937; }
+  .cell { padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .cell.dark { background: #0b0b10; }
+  .cell.light { background: #f3f4f6; }
+  .label { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  .cell.light .label { color: #374151; }
+  .stage { width: 64px; height: 64px; display: grid; place-items: center; }
+  .cur { width: 32px; height: 32px; }
+  :root {
+    --cc-c1:#22D3EE; --cc-c2:#6366F1; --cc-c3:#D946EF;
+    --cc-listen:#22D3EE; --cc-think:#8B5CF6; --cc-exec:#6366F1; --cc-ok:#22C55E; --cc-err:#EF4444;
+  }
+  .cur[data-state='idle']{color:var(--cc-c2); filter:drop-shadow(0 0 2px color-mix(in srgb,var(--cc-c2) 55%,transparent)); animation:cc-breathe 3.2s ease-in-out infinite;}
+  .cur[data-state='listening']{color:var(--cc-listen); animation:cc-pulse 1s ease-in-out infinite;}
+  .cur[data-state='thinking']{color:var(--cc-think); animation:cc-shimmer 1.4s linear infinite;}
+  .cur[data-state='executing']{color:var(--cc-exec); animation:cc-exec .7s ease-in-out infinite;}
+  .cur[data-state='success']{color:var(--cc-ok); animation:cc-pop .45s ease-out infinite;}
+  .cur[data-state='error']{color:var(--cc-err); animation:cc-shake .5s ease-in-out infinite;}
+  @keyframes cc-breathe{0%,100%{filter:drop-shadow(0 0 1.5px color-mix(in srgb,var(--cc-c2) 45%,transparent));}50%{filter:drop-shadow(0 0 3.5px color-mix(in srgb,var(--cc-c2) 70%,transparent));}}
+  @keyframes cc-pulse{0%,100%{transform:scale(1);filter:drop-shadow(0 0 2px var(--cc-listen));}50%{transform:scale(1.08);filter:drop-shadow(0 0 7px var(--cc-listen));}}
+  @keyframes cc-shimmer{0%{filter:drop-shadow(-2px 0 3px var(--cc-think));}50%{filter:drop-shadow(2px 0 3px var(--cc-think));}100%{filter:drop-shadow(-2px 0 3px var(--cc-think));}}
+  @keyframes cc-exec{0%,100%{transform:scale(1.05);filter:drop-shadow(0 0 5px var(--cc-exec));}50%{transform:scale(1.08) translate(-.5px,-.5px);filter:drop-shadow(0 0 9px var(--cc-exec));}}
+  @keyframes cc-pop{0%{transform:scale(1);}40%{transform:scale(1.18);}100%{transform:scale(1);}}
+  @keyframes cc-shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-2.5px);}75%{transform:translateX(2.5px);}}
+</style>
+</head>
+<body>
+  <h1>Buddy Cursor — 6 states</h1>
+  <p class="sub">Each state shown on dark and light to prove the "legible on any background" requirement. Animation loops here for preview; in-app each state plays per the transition table.</p>
+  <div class="grid" id="grid"></div>
+  <script>
+    const CURSOR = ` Buddy cursor, IDLE state. Slice 1.4. - Silhouette: classic pointer arrow so it reads as "cursor" instantly. - Hotspot: the tip at logical (1,1) in the 24x24 viewBox (set as the cursor hotspot when applied; the overlay positions this point at the target). - Legibility on ANY background: white outer stroke (halo) + gradient fill + soft drop-shadow glow. The halo is what makes it survive on light AND dark. - State color is applied at runtime by cursor-states.css (this file bakes the IDLE brand gradient as the default/exported asset). --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Click Click cursor"> <defs> <linearGradient id="cc-idle" x1="2" y1="2" x2="16" y2="21" gradientUnits="userSpaceOnUse"> <stop offset="0" stop-color="#22D3EE"/> <stop offset="0.5" stop-color="#6366F1"/> <stop offset="1" stop-color="#D946EF"/> </linearGradient> <filter id="cc-glow" x="-50%" y="-50%" width="200%" height="200%"> <feDropShadow dx="0" dy="0" stdDeviation="1.2" flood-color="#6366F1" flood-opacity="0.55"/> </filter> </defs> <!-- white halo (outer) --> <path d="M1 1 L1 20 L6 15 L9 22 L12 20.5 L9 14 L16 14 Z" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/> <!-- gradient body (inner) --> <path d="M1 1 L1 20 L6 15 L9 22 L12 20.5 L9 14 L16 14 Z" fill="url(#cc-idle)" stroke="#0B0B10" stroke-width="0.5" stroke-linejoin="round" filter="url(#cc-glow)"/></svg>`;
+    const states = ['idle','listening','thinking','executing','success','error'];
+    const grid = document.getElementById('grid');
+    for (const bg of ['dark','light']) {
+      for (const s of states) {
+        const cell = document.createElement('div');
+        cell.className = 'cell ' + bg;
+        cell.innerHTML = `<div class="stage">${CURSOR}</div><div class="label">${s}</div>`;
+        const svg = cell.querySelector('svg');
+        svg.classList.add('cur'); svg.setAttribute('data-state', s);
+        grid.appendChild(cell);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+dist/
+out/
+build/
+*.node
+.env
+.env.*
+logs/
+*.log
+.DS_Store
+Thumbs.db
+app/platform/native/build/
+.keys/

@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+
+jobs:
+  # Green core: runs on Linux (no display server needed — the testable core is
+  # deliberately Electron-free). Fast gate for every push.
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test -- --coverage
+
+  # Native addons cannot be cross-compiled — each OS builds its own (plan §5).
+  # Job stubs now; the native build/test steps activate with slice 1.8 / 2.1.
+  native:
+    needs: core
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # - run: npm run build:native:win   # enable in slice 1.8 (windows-latest)
+      # - run: npm run build:native:mac   # enable in slice 2.1 (macos-latest)
+      # - run: npm run test:native        # bridge wrapper + safety tests

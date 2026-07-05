@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 2,
+  "issuedAt": "2026-07-04T00:00:00Z",
+  "entries": [
+    { "provider": "openrouter", "tosVersion": "or-2026-05-06", "questionsVersion": "or-q-2026-07-1" },
+    { "provider": "openai", "tosVersion": "oai-2026-01-01", "questionsVersion": "oai-q-2026-07-1" },
+    { "provider": "anthropic", "tosVersion": "anth-2026-06-27", "questionsVersion": "anth-q-2026-07-1" }
+  ]
+}

@@ -1,0 +1,111 @@
+/* app/overlay/cursor-states.css
+   The 6-state visual system for the buddy cursor, as CONSUMABLE code (not just a
+   spec). app/overlay/overlay.ts sets data-state on the cursor element; these rules
+   drive color + motion. Every state carries a REDUNDANT motion/shape cue so state
+   is never conveyed by color alone (accessibility — colorblind-safe).
+
+   States map 1:1 to the FS-F animation state machine:
+     idle -> listening -> thinking -> executing -> success | error -> idle
+*/
+
+:root {
+  /* Brand gradient stops (idle). */
+  --cc-c1: #22D3EE; /* cyan   */
+  --cc-c2: #6366F1; /* indigo */
+  --cc-c3: #D946EF; /* magenta*/
+
+  /* Per-state accents. */
+  --cc-listen: #22D3EE;  /* cyan   */
+  --cc-think:  #8B5CF6;  /* violet */
+  --cc-exec:   #6366F1;  /* indigo */
+  --cc-ok:     #22C55E;  /* green  */
+  --cc-err:    #EF4444;  /* red    */
+}
+
+#buddy-cursor {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  will-change: transform, filter;
+  /* Position is driven by JS (transform: translate(x,y)); this only styles it. */
+}
+
+/* The gradient fill + halo live in the SVG; state changes retint the glow and
+   drive motion. currentColor feeds the drop-shadow tint via CSS filter. */
+
+/* idle: steady presence, very slow breathing glow. "I'm here." */
+#buddy-cursor[data-state='idle'] {
+  color: var(--cc-c2);
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--cc-c2) 55%, transparent));
+  animation: cc-breathe 3.2s ease-in-out infinite;
+}
+
+/* listening: cyan, expanding/contracting ring pulse. "I hear you." */
+#buddy-cursor[data-state='listening'] {
+  color: var(--cc-listen);
+  filter: drop-shadow(0 0 4px var(--cc-listen));
+  animation: cc-pulse 1s ease-in-out infinite;
+}
+
+/* thinking: violet shimmer sweep. "Processing." */
+#buddy-cursor[data-state='thinking'] {
+  color: var(--cc-think);
+  filter: drop-shadow(0 0 3px var(--cc-think));
+  animation: cc-shimmer 1.4s linear infinite;
+}
+
+/* executing: confident, slightly larger, directional pulse toward the tip.
+   Only ever entered AFTER user confirmation (confirmation-always). "Acting." */
+#buddy-cursor[data-state='executing'] {
+  color: var(--cc-exec);
+  filter: drop-shadow(0 0 6px var(--cc-exec));
+  animation: cc-exec 0.7s ease-in-out infinite;
+}
+
+/* success: green, single pop, then the state machine returns to idle. "Done." */
+#buddy-cursor[data-state='success'] {
+  color: var(--cc-ok);
+  filter: drop-shadow(0 0 6px var(--cc-ok));
+  animation: cc-pop 0.45s ease-out 1;
+}
+
+/* error: red, short shake, then fallback to idle (error -> idle required). */
+#buddy-cursor[data-state='error'] {
+  color: var(--cc-err);
+  filter: drop-shadow(0 0 6px var(--cc-err));
+  animation: cc-shake 0.4s ease-in-out 1;
+}
+
+@keyframes cc-breathe {
+  0%, 100% { filter: drop-shadow(0 0 1.5px color-mix(in srgb, var(--cc-c2) 45%, transparent)); }
+  50%      { filter: drop-shadow(0 0 3.5px color-mix(in srgb, var(--cc-c2) 70%, transparent)); }
+}
+@keyframes cc-pulse {
+  0%, 100% { transform: scale(1);    filter: drop-shadow(0 0 2px var(--cc-listen)); }
+  50%      { transform: scale(1.08); filter: drop-shadow(0 0 7px var(--cc-listen)); }
+}
+@keyframes cc-shimmer {
+  0%   { filter: drop-shadow(-2px 0 3px var(--cc-think)); }
+  50%  { filter: drop-shadow( 2px 0 3px var(--cc-think)); }
+  100% { filter: drop-shadow(-2px 0 3px var(--cc-think)); }
+}
+@keyframes cc-exec {
+  0%, 100% { transform: scale(1.05) translate(0, 0);     filter: drop-shadow(0 0 5px var(--cc-exec)); }
+  50%      { transform: scale(1.08) translate(-0.5px, -0.5px); filter: drop-shadow(0 0 9px var(--cc-exec)); }
+}
+@keyframes cc-pop {
+  0%   { transform: scale(1);    }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1);    }
+}
+@keyframes cc-shake {
+  0%, 100% { transform: translateX(0);    }
+  25%      { transform: translateX(-2.5px);}
+  75%      { transform: translateX(2.5px); }
+}
+
+/* Respect reduced-motion: drop animations, keep color + a static glow so state is
+   still legible without movement. */
+@media (prefers-reduced-motion: reduce) {
+  #buddy-cursor[data-state] { animation: none !important; }
+}
