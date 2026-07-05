@@ -52,7 +52,7 @@ test('panel renderer isolation: no Node globals, bridge exposes only the named p
   expect(result.hasRequire).toBe(false);
   expect(result.hasModule).toBe(false);
   expect(result.bridgeKeys).toEqual(
-    ['askAgent', 'getGateStatus', 'getProviders', 'getQuiz', 'onPanelState', 'submitQuiz'].sort(),
+    ['askAgent', 'decide', 'getGateStatus', 'getProviders', 'getQuiz', 'onPanelState', 'onProposal', 'submitQuiz'].sort(),
   );
   expect(result.hasRawIpc).toBe(false);
 });

@@ -12,6 +12,10 @@ import { authorize } from '../../gateway/auth.js';
 import { evaluatePass, mintPassRecord, type QuestionPack, type ManifestEntry } from '../../gateway/policy/critical-tos-gate.js';
 import { createGatewayServer } from '../../gateway/server.js';
 import { GATE_CONTENT_LEGAL_REVIEW } from '../../gateway/policy/provider-tos-content.js';
+import { createMockBridge } from '../../app/platform/mock.js';
+import { createProposalRegistry } from '../../app/ipc/proposal-registry.js';
+import { handleDecision } from '../../app/ipc/handlers.js';
+import type { ProposedAction } from '../../app/models/types.js';
 
 describe('security suite — live checks', () => {
   it('requests without the loopback bearer token are rejected', () => {
@@ -78,8 +82,34 @@ describe('security suite — live checks (slice 1.6)', () => {
   });
 });
 
+describe('security suite — live checks (slice 2.3)', () => {
+  it('an action tool call without a confirmed proposal is rejected', () => {
+    const registry = createProposalRegistry();
+    const bridge = createMockBridge();
+    const action: ProposedAction = { actionType: 'focus', targetWindowTitle: 'Settings', description: 'x' };
+
+    // No mint() ever happened for this id — there is no code path that lets a
+    // renderer-submitted decision execute without a registry entry to consume.
+    const outcome = handleDecision(registry, bridge, {
+      proposalId: '00000000-0000-0000-0000-000000000000',
+      approved: true,
+    });
+    expect(outcome).toEqual({ status: 'rejected', reason: 'unknown_or_expired' });
+    expect(bridge.calls).toHaveLength(0);
+
+    // Even a real, minted-and-consumed action can't be executed a second time
+    // by resubmitting the same proposalId (replay guard).
+    const proposalId = registry.mint(action, 'model')!;
+    expect(handleDecision(registry, bridge, { proposalId, approved: true }).status).toBe('executed');
+    expect(handleDecision(registry, bridge, { proposalId, approved: true })).toEqual({
+      status: 'rejected',
+      reason: 'unknown_or_expired',
+    });
+    expect(bridge.calls).toHaveLength(1);
+  });
+});
+
 describe('security suite — activate as subject lands', () => {
   it.todo('path traversal + symlink escape rejected by fs sandbox (Phase 3, fs-server)');
-  it.todo('action tool call without a confirmed proposal is rejected (Phase 2, handlers proposal registry)');
   it.todo('malformed / unauthorized IPC payloads rejected by the zod layer in main (Phase 1, handlers)');
 });

@@ -42,6 +42,14 @@ const panelBridge: PanelBridge = {
   onPanelState(cb) {
     ipcRenderer.on(IPC_CHANNELS.PANEL_STATE, (_event, state) => cb(state));
   },
+  onProposal(cb) {
+    ipcRenderer.on(IPC_CHANNELS.AUTOMATION_PROPOSAL, (_event, raw) => cb(raw));
+  },
+  decide(proposalId, approved) {
+    // send, not invoke — main doesn't return a value here; AUTOMATION_RESULT
+    // (a separate push, not wired to this call's return) carries the outcome.
+    ipcRenderer.send(IPC_CHANNELS.AUTOMATION_DECISION, { proposalId, approved });
+  },
 };
 
 contextBridge.exposeInMainWorld('clickclick', overlayBridge);

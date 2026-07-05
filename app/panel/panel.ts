@@ -8,6 +8,8 @@
 
 import { createPanelStateMachine, type PanelState } from './panel-state.js';
 import { toQuizView, toResultView, type QuizView, type RedactedGateQuestion, type ResultView, type SubmitResult } from './gate-view.js';
+import { toConfirmView, type ConfirmView } from './confirm-view.js';
+import { automationProposalSchema, safeParse } from '../ipc/schemas.js';
 
 export interface ProviderInfo {
   id: string;
@@ -32,6 +34,10 @@ export interface PanelBridge {
   getQuiz(provider: string): Promise<QuizResponse>;
   submitQuiz(provider: string, answers: Record<string, number>): Promise<SubmitResult>;
   onPanelState(cb: (state: PanelState) => void): void;
+  /** Raw, untrusted wire payload — validated here via automationProposalSchema before use. */
+  onProposal(cb: (raw: unknown) => void): void;
+  /** The ONLY shape the renderer can ever send back — never a raw action. */
+  decide(proposalId: string, approved: boolean): void;
 }
 
 declare global {
@@ -130,6 +136,33 @@ function renderResult(container: HTMLElement, view: ResultView, onRetake: () => 
   container.appendChild(retakeBtn);
 }
 
+function renderConfirm(container: HTMLElement, view: ConfirmView, onDecide: (approved: boolean) => void): void {
+  clearChildren(container);
+  container.hidden = false;
+
+  const summary = document.createElement('p');
+  summary.className = 'cc-confirm-summary';
+  summary.textContent = view.summary; // the CONCRETE action — textContent only
+  container.appendChild(summary);
+
+  const description = document.createElement('p');
+  description.className = 'cc-confirm-description';
+  description.textContent = view.description;
+  container.appendChild(description);
+
+  const approveBtn = document.createElement('button');
+  approveBtn.type = 'button';
+  approveBtn.textContent = 'Approve';
+  approveBtn.addEventListener('click', () => onDecide(true));
+  container.appendChild(approveBtn);
+
+  const denyBtn = document.createElement('button');
+  denyBtn.type = 'button';
+  denyBtn.textContent = 'Deny';
+  denyBtn.addEventListener('click', () => onDecide(false));
+  container.appendChild(denyBtn);
+}
+
 function appendRecent(list: HTMLElement, text: string): void {
   const item = document.createElement('li');
   item.textContent = text; // textContent only
@@ -151,7 +184,17 @@ export function initPanel(bridge: PanelBridge, doc: Document): void {
   const promptInput = doc.getElementById('prompt') as HTMLInputElement | null;
   const providerKeyInput = doc.getElementById('provider-key') as HTMLInputElement | null;
   const recentList = doc.getElementById('recent');
-  if (!strip || !panel || !providerSelect || !gateContainer || !promptInput || !providerKeyInput || !recentList) {
+  const confirmContainer = doc.getElementById('confirm');
+  if (
+    !strip ||
+    !panel ||
+    !providerSelect ||
+    !gateContainer ||
+    !promptInput ||
+    !providerKeyInput ||
+    !recentList ||
+    !confirmContainer
+  ) {
     return;
   }
 
@@ -180,6 +223,22 @@ export function initPanel(bridge: PanelBridge, doc: Document): void {
 
   bridge.onPanelState((state) => {
     machine.transition(state);
+  });
+
+  bridge.onProposal((raw) => {
+    const parsed = safeParse(automationProposalSchema, raw);
+    if (!parsed.ok) return; // malformed/untrusted proposal — drop silently, never shown
+    // A confirmation needs the user's attention now — force the panel visible
+    // regardless of hover state (best-effort state-machine sync; visibility
+    // itself never depends on whether the transition was "valid").
+    machine.transition('Expanded');
+    panel!.hidden = false;
+    const view = toConfirmView(parsed.value.proposalId, parsed.value.origin, parsed.value.action);
+    renderConfirm(confirmContainer!, view, (approved) => {
+      bridge.decide(view.proposalId, approved);
+      confirmContainer!.hidden = true;
+      clearChildren(confirmContainer!);
+    });
   });
 
   async function loadProviders(): Promise<void> {

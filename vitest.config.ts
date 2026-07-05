@@ -30,6 +30,12 @@ export default defineConfig({
         // are validated via docs/demo-P1.md, per the plan's Electron-free-core rule.
         'app/panel/panel-state.ts',
         'app/panel/gate-view.ts',
+        // Slice 2.3 — the confirm-flow security core (100% required) + the
+        // pure execute/handler logic. panel.ts DOM glue stays jsdom-tested only.
+        'app/ipc/proposal-registry.ts',
+        'app/ipc/execute-action.ts',
+        'app/ipc/handlers.ts',
+        'app/panel/confirm-view.ts',
       ],
       thresholds: {
         // Green-core gate. Raise UI/bridge-wrapper thresholds as those land (§9).
@@ -43,6 +49,10 @@ export default defineConfig({
         'app/overlay/cursor-mirror.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
         'app/panel/panel-state.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
         'app/panel/gate-view.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
+        'app/ipc/proposal-registry.ts': { statements: 100, branches: 100, functions: 100, lines: 100 },
+        'app/ipc/execute-action.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
+        'app/ipc/handlers.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
+        'app/panel/confirm-view.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
       },
     },
   },

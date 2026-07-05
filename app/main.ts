@@ -22,6 +22,10 @@ import { createGatewayServer } from '../gateway/server.js';
 import { createPassStore } from '../gateway/policy/pass-store.js';
 import { PROVIDERS } from '../gateway/providers/registry.js';
 import { askAgent, getGateStatus, getQuiz, submitQuiz, type GatewayClientConfig } from './models/router.js';
+import { createMockBridge } from './platform/mock.js';
+import { createProposalRegistry } from './ipc/proposal-registry.js';
+import { registerAutomationHandlers, sendProposal } from './ipc/handlers.js';
+import type { ProposedAction } from './models/types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +43,11 @@ const DEFAULT_MODEL_FOR_PROVIDER: Readonly<Record<string, string>> = Object.free
 let overlayWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
 let gatewayConfig: GatewayClientConfig | null = null;
+
+// Real OS input injection arrives with the native bridges (1.8/2.1); this
+// slice proves the confirm-then-execute pathway on the mock bridge.
+const platformBridge = createMockBridge();
+const proposalRegistry = createProposalRegistry();
 
 // --- e2e-only introspection + control hook (Playwright, specs/e2e-electron-scope.md) ---
 //
@@ -66,6 +75,9 @@ interface E2EHooks {
   feedCursor(x: number, y: number): void;
   triggerNextState(): void;
   pushGuidance(raw: unknown): void;
+  proposeAction(action: ProposedAction, origin: 'model' | 'task' | 'mcp'): string | null;
+  /** Read-only view into the mock PlatformBridge's call log, for e2e assertions. */
+  getBridgeCalls(): ReadonlyArray<{ fn: string; args: unknown[] }>;
 }
 
 declare global {
@@ -78,6 +90,8 @@ if (E2E) {
     feedCursor: () => undefined,
     triggerNextState: () => undefined,
     pushGuidance: () => undefined,
+    proposeAction: () => null,
+    getBridgeCalls: () => platformBridge.calls.map((c) => ({ fn: c.fn, args: c.args })),
   };
 }
 
@@ -267,6 +281,23 @@ function setupE2EControls(overlay: BrowserWindow): void {
   };
 }
 
+/** Mints + sends a proposal to the panel. Returns the proposalId, or null if rate-limited. */
+function proposeToPanel(action: ProposedAction, origin: 'model' | 'task' | 'mcp'): string | null {
+  if (!panelWindow) return null;
+  const result = sendProposal(proposalRegistry, panelWindow.webContents, action, origin);
+  return result?.proposalId ?? null;
+}
+
+/** Dev-only hook: proposes one sample action so the confirm-flow demo has something to show. */
+function startDevProposalDemo(): void {
+  const sample: ProposedAction = {
+    actionType: 'focus',
+    targetWindowTitle: 'Settings',
+    description: 'A scripted task wants to bring Settings to the foreground.',
+  };
+  setTimeout(() => proposeToPanel(sample, 'task'), 6000);
+}
+
 /** Starts the loopback gateway and records the token + URL for the IPC handlers below. */
 async function startGateway(): Promise<GatewayClientConfig> {
   // CC_DATA_DIR overrides the pass-store location — used by the e2e harness so
@@ -337,15 +368,29 @@ void app.whenReady().then(async () => {
     else panelWindow.show();
   });
 
+  registerAutomationHandlers({
+    ipcMain,
+    registry: proposalRegistry,
+    bridge: platformBridge,
+    panelWebContents: () => panelWindow?.webContents ?? null,
+    executeOptions: { displays: getDisplayBounds() },
+  });
+  // TTL-expired proposals never execute (consume() already checks), but this
+  // periodically frees the Map entries themselves rather than leaking memory
+  // for proposals nobody ever decided on.
+  setInterval(() => proposalRegistry.expireStale(), 10_000);
+
   if (E2E) {
     // Deterministic, directly-callable controls replace the real cursor poll
     // and wall-clock demo timers — see setupE2EControls().
     setupE2EControls(overlayWindow);
+    globalThis.__ccE2E!.proposeAction = proposeToPanel;
   } else {
     startCursorMirror(overlayWindow);
     if (process.env.NODE_ENV !== 'production') {
       startDevStateCycler(overlayWindow);
       startDevGuidanceDemo(overlayWindow);
+      startDevProposalDemo();
     }
   }
 

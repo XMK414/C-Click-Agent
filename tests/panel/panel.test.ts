@@ -19,6 +19,7 @@ function setupDom(): void {
       <input id="prompt" type="text" />
       <input id="provider-key" type="password" />
       <ul id="recent"></ul>
+      <div id="confirm" hidden></div>
     </section>
   `;
 }
@@ -38,6 +39,8 @@ function makeBridge(overrides: Partial<PanelBridge> = {}): PanelBridge {
     submitQuiz: async (): Promise<SubmitResult> => ({ unlocked: true }),
     askAgent: async (): Promise<unknown> => ({ steps: [], mode: 'guide' }),
     onPanelState: (_cb: (state: PanelState) => void): void => {},
+    onProposal: (_cb: (raw: unknown) => void): void => {},
+    decide: (_proposalId: string, _approved: boolean): void => {},
   };
   return { ...defaults, ...overrides };
 }
@@ -209,6 +212,112 @@ describe('initPanel — onPanelState wiring', () => {
     expect(captured).toBeTypeOf('function');
     // Driving it directly must not throw, even for a transition that's a no-op.
     expect(() => captured!('Replying')).not.toThrow();
+  });
+});
+
+describe('initPanel — confirmation UI', () => {
+  function makeFocusProposal(overrides: Record<string, unknown> = {}) {
+    return {
+      proposalId: '11111111-1111-4111-8111-111111111111',
+      origin: 'model',
+      action: { actionType: 'focus', targetWindowTitle: 'Settings', description: 'Bring Settings forward' },
+      ...overrides,
+    };
+  }
+
+  it('forces the panel visible when a proposal arrives, even without a hover', () => {
+    let deliverProposal: ((raw: unknown) => void) | undefined;
+    const bridge = makeBridge({
+      onProposal: (cb) => {
+        deliverProposal = cb;
+      },
+    });
+    initPanel(bridge, document);
+    expect((document.getElementById('panel') as HTMLElement).hidden).toBe(true); // starts collapsed
+
+    deliverProposal!(makeFocusProposal());
+    expect((document.getElementById('panel') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('renders the concrete action + description as literal text, never HTML', () => {
+    let deliverProposal: ((raw: unknown) => void) | undefined;
+    const bridge = makeBridge({
+      onProposal: (cb) => {
+        deliverProposal = cb;
+      },
+    });
+    initPanel(bridge, document);
+
+    deliverProposal!(
+      makeFocusProposal({
+        action: {
+          actionType: 'focus',
+          targetWindowTitle: '<img src=x onerror=alert(1)>',
+          description: '<script>alert(2)</script>',
+        },
+      }),
+    );
+
+    const confirm = document.getElementById('confirm')!;
+    expect(confirm.hidden).toBe(false);
+    expect(confirm.querySelector('img')).toBeNull();
+    expect(confirm.querySelector('script')).toBeNull();
+    expect(confirm.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(confirm.textContent).toContain('<script>alert(2)</script>');
+  });
+
+  it('approve calls decide(proposalId, true) with only that shape — never the action', () => {
+    let deliverProposal: ((raw: unknown) => void) | undefined;
+    const decide = vi.fn();
+    const bridge = makeBridge({
+      onProposal: (cb) => {
+        deliverProposal = cb;
+      },
+      decide,
+    });
+    initPanel(bridge, document);
+    deliverProposal!(makeFocusProposal());
+
+    const confirm = document.getElementById('confirm')!;
+    const approveBtn = Array.from(confirm.querySelectorAll('button')).find((b) => b.textContent === 'Approve')!;
+    approveBtn.click();
+
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(decide).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', true);
+    expect(confirm.hidden).toBe(true);
+  });
+
+  it('deny calls decide(proposalId, false)', () => {
+    let deliverProposal: ((raw: unknown) => void) | undefined;
+    const decide = vi.fn();
+    const bridge = makeBridge({
+      onProposal: (cb) => {
+        deliverProposal = cb;
+      },
+      decide,
+    });
+    initPanel(bridge, document);
+    deliverProposal!(makeFocusProposal());
+
+    const confirm = document.getElementById('confirm')!;
+    const denyBtn = Array.from(confirm.querySelectorAll('button')).find((b) => b.textContent === 'Deny')!;
+    denyBtn.click();
+
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(decide).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', false);
+  });
+
+  it('a malformed/untrusted proposal payload is dropped silently — no render, no throw', () => {
+    let deliverProposal: ((raw: unknown) => void) | undefined;
+    const bridge = makeBridge({
+      onProposal: (cb) => {
+        deliverProposal = cb;
+      },
+    });
+    initPanel(bridge, document);
+
+    expect(() => deliverProposal!({ nope: true })).not.toThrow();
+    expect(document.getElementById('confirm')!.hidden).toBe(true);
   });
 });
 

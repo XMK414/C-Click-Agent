@@ -66,4 +66,26 @@ await esbuild.build({
   logLevel: 'info',
 });
 
+// Renderer entry points loaded via <script type="module" src="...js"> in a
+// file:// page can resolve RELATIVE imports fine (that's how overlay.ts's
+// local-only dependency graph always worked), but cannot resolve a bare npm
+// specifier like "zod" — browsers have no node_modules resolution. panel.ts
+// now imports app/ipc/schemas.ts (for automationProposalSchema), which
+// imports zod, so tsc's plain per-file ESM output breaks it at runtime with
+// "Failed to resolve module specifier 'zod'". Bundle both renderer entry
+// points so any current or future npm dependency is inlined rather than left
+// as an unresolvable bare specifier.
+console.log('[build-e2e] esbuild overlay.ts + panel.ts -> bundled ESM (browser cannot resolve bare npm specifiers)');
+await esbuild.build({
+  entryPoints: [resolve(repoRoot, 'app/overlay/overlay.ts'), resolve(repoRoot, 'app/panel/panel.ts')],
+  outdir: outDir,
+  outbase: repoRoot, // preserves the app/overlay/... and app/panel/... prefix in the output path
+  entryNames: '[dir]/[name]',
+  bundle: true,
+  platform: 'browser',
+  format: 'esm',
+  target: 'chrome120',
+  logLevel: 'info',
+});
+
 console.log('[build-e2e] done');

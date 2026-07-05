@@ -15,23 +15,29 @@ npm run verify   # must be green before you run the demo
 
 ## Run it
 
-There is no build step yet (Electron's TS loader isn't wired up in this
-slice) — the quickest way to see it live is to transpile once with `tsc` and
-copy the static overlay/panel assets alongside the output, then launch
-Electron directly. Electron 43 loads an ESM `main.js` natively (this repo is
-`"type": "module"`), so there's no need to force `--module commonjs`:
+There is no packaged build step yet, but `scripts/build-e2e.mjs` (originally
+written for the Playwright e2e lane) does everything needed to run the app
+live, so reuse it rather than hand-rolling the same steps twice:
 
 ```
-npx tsc -p tsconfig.json --outDir dist --noEmit false   # tsconfig.json sets noEmit:true; override it here
-cp app/overlay/overlay.html app/overlay/styles.css app/overlay/cursor-states.css dist/app/overlay/
-cp -r app/overlay/assets dist/app/overlay/
-cp app/panel/panel.html app/panel/styles.css dist/app/panel/
-cp -r gateway/policy/fixtures dist/gateway/policy/   # the signed manifest is data, not TS — tsc won't copy it
-npx electron dist/app/main.js
+node scripts/build-e2e.mjs   # tsc + static-asset copy + two required bundling steps (see below)
+npx electron dist-e2e/app/main.js
 ```
 
-(A proper `dev`/`build` script lands with the packaging slice later in Phase 1;
-this is the manual path for now.)
+Two non-obvious things that script handles, both real bugs the e2e harness
+caught (not just build trivia):
+- `app/preload.ts` is bundled to CommonJS via esbuild, because Electron's
+  **sandboxed** preload loader (`sandbox: true`, mandatory) cannot parse ES
+  module `import` syntax at all — a plain `tsc` ESM build means
+  `window.clickclick`/`clickclickPanel` are never defined, silently.
+- `app/overlay/overlay.ts` and `app/panel/panel.ts` are bundled to browser ESM
+  via esbuild too, because a `<script type="module">` loaded from a `file://`
+  page can't resolve a bare npm specifier like `zod` (no `node_modules`
+  resolution in a browser) — `panel.ts` pulls in `zod` transitively via
+  `app/ipc/schemas.ts`.
+
+(A proper `dev`/`build` script for actual packaging lands with the packaging
+slice later in Phase 1; this is the manual/demo path for now.)
 
 ## What you should see
 
@@ -167,3 +173,61 @@ with **Ctrl+Shift+Space** (`CommandOrControl+Shift+Space`) or just hover it.
   `<img>`/`<script>`), submitting the quiz never transmits/renders
   `correctIndex`, the ask flow calls `askAgent` with exactly `(prompt,
   provider, providerKey)` and clears the key input immediately after.
+
+---
+
+# Slice 2.3 — Proposal / Confirmation Registry (Assist Mode)
+
+Once the app is running, wait ~6 seconds after launch (non-production only) —
+the dev hook proposes one sample action so the confirm flow demo has
+something to show without a real model/task/MCP integration yet.
+
+## What you should see
+
+1. **The panel forces itself open** — even if you never hovered the strip —
+   because a pending confirmation needs your attention now. This is
+   deliberate: `app/panel/panel.ts` force-expands the panel on
+   `AUTOMATION_PROPOSAL`, regardless of the Collapsed/Expanded hover state.
+2. **A concrete action summary appears**, e.g. `Focus window "Settings"` —
+   never a vague label like "an action was requested." This is the
+   prompt-injection backstop: even an action smuggled in via an injected
+   prompt would still be shown verbatim, so you consent (or don't) to the
+   real thing.
+3. **Approve or Deny.** Approving calls the (mock) `PlatformBridge` exactly
+   once — `app/ipc/proposal-registry.ts`'s consume-once guarantee means even
+   a resubmitted decision for the same id can never execute twice. Denying
+   never touches the bridge at all.
+4. Real OS input injection arrives with the native bridges (1.8/2.1); this
+   slice proves the confirm-then-execute pathway end-to-end on the mock
+   bridge (`app/platform/mock.ts`).
+
+## Verifying the security properties manually
+
+- Open the panel's devtools and confirm there is no way to submit a raw
+  action — `window.clickclickPanel.decide` takes only `(proposalId,
+  approved)`; there is no method that accepts an action payload.
+- The main process (not shown in any devtools) is the only place the actual
+  `ProposedAction` ever lives between mint and execute.
+
+## Automated coverage (slice 2.3)
+
+- `tests/ipc/proposal-registry.test.ts` — mint/consume-once/peek/expiry/
+  per-origin rate limiting (100% coverage required — this is the security
+  core of the confirm flow).
+- `tests/ipc/execute-action.test.ts` — the sole execution entrypoint
+  re-validates (key-token whitelist, coordinate clamping) even though the
+  proposal was already validated once at mint time.
+- `tests/ipc/handlers.test.ts` — no execution without a minted proposal,
+  consume-once/replay guard, an injected `action` field in a decision payload
+  is ignored (zod strips it — the STORED action always executes), deny/expiry
+  never reach the bridge, origin-agnostic (model/task/mcp identical
+  round-trip).
+- `tests/panel/confirm-view.test.ts` — concrete, human-readable summaries per
+  action type; the origin's description passes through verbatim.
+- `tests/panel/panel.test.ts` (jsdom) — the confirm UI renders via
+  `textContent` only, approve/deny call `decide()` with exactly
+  `{proposalId, approved}`, a malformed proposal is dropped silently, and the
+  panel forces itself visible on a proposal even without a hover.
+- `e2e/assist.e2e.ts` — the whole flow proven in the REAL panel window:
+  approve executes on the mock bridge exactly once, deny never touches it,
+  and a replayed decision for an already-consumed proposal is a no-op.
