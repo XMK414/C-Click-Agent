@@ -26,6 +26,10 @@ export default defineConfig({
         'app/overlay/render-model.ts',
         'app/overlay/cursor-mirror.ts',
         'app/overlay/overlay.ts',
+        // Slice 1.5 — pure logic only; panel.ts (DOM glue) + main/preload wiring
+        // are validated via docs/demo-P1.md, per the plan's Electron-free-core rule.
+        'app/panel/panel-state.ts',
+        'app/panel/gate-view.ts',
       ],
       thresholds: {
         // Green-core gate. Raise UI/bridge-wrapper thresholds as those land (§9).
@@ -37,6 +41,8 @@ export default defineConfig({
         'gateway/server.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
         'app/overlay/render-model.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
         'app/overlay/cursor-mirror.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
+        'app/panel/panel-state.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
+        'app/panel/gate-view.ts': { statements: 90, branches: 90, functions: 90, lines: 90 },
       },
     },
   },

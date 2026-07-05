@@ -12,6 +12,13 @@ export const IPC_CHANNELS = {
   SCREEN_CAPTURE_RESPONSE: 'screen-capture-response', // main → panel
   PANEL_STATE: 'panel-state',
   MCP_SERVERS_UPDATE: 'mcp-servers-update',
+  // Panel -> main, invoke/response (slice 1.5). Main mediates every gateway call
+  // so the bearer token and gateway URL never reach the renderer.
+  ASK_AGENT: 'ask-agent',
+  GET_GATE_STATUS: 'get-gate-status',
+  GET_QUIZ: 'get-quiz',
+  SUBMIT_QUIZ: 'submit-quiz',
+  GET_PROVIDERS: 'get-providers',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -1,13 +1,15 @@
 // app/preload.ts — the ONLY renderer API surface (plan §7).
 //
-// SLICE 1.4/1.5. Exposes a typed, minimal contextBridge: renderers get NO Node
-// access, NO ipcRenderer, only these named, read-only listener channels. Raw
-// action payloads can never be sent from here — the renderer may only
-// approve/deny a main-issued proposalId (that surface lands in 1.5).
+// SLICE 1.4/1.5. Exposes typed, minimal contextBridge surfaces: renderers get NO
+// Node access, NO ipcRenderer, only these named channels. The overlay bridge is
+// read-only listeners. The panel bridge mediates every gateway call through
+// main via ipcRenderer.invoke — no token, no raw gateway URL, and no raw action
+// payload ever reaches either renderer.
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from './ipc/channels.js';
 import type { OverlayBridge } from './overlay/overlay.js';
+import type { PanelBridge } from './panel/panel.js';
 
 const overlayBridge: OverlayBridge = {
   onCursor(cb) {
@@ -21,4 +23,26 @@ const overlayBridge: OverlayBridge = {
   },
 };
 
+const panelBridge: PanelBridge = {
+  getProviders() {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS);
+  },
+  askAgent(prompt, provider, providerKey) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ASK_AGENT, { prompt, provider, providerKey });
+  },
+  getGateStatus(provider) {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_GATE_STATUS, provider);
+  },
+  getQuiz(provider) {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_QUIZ, provider);
+  },
+  submitQuiz(provider, answers) {
+    return ipcRenderer.invoke(IPC_CHANNELS.SUBMIT_QUIZ, provider, answers);
+  },
+  onPanelState(cb) {
+    ipcRenderer.on(IPC_CHANNELS.PANEL_STATE, (_event, state) => cb(state));
+  },
+};
+
 contextBridge.exposeInMainWorld('clickclick', overlayBridge);
+contextBridge.exposeInMainWorld('clickclickPanel', panelBridge);
