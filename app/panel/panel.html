@@ -9,12 +9,14 @@
   <body>
     <div id="strip"></div>
     <section id="panel" hidden>
-      <select id="provider"></select>
-      <div id="gate-container"></div>
-      <input id="prompt" type="text" placeholder="Ask Click Click…" />
-      <input id="provider-key" type="password" placeholder="Provider key (used once, never stored)" />
-      <ul id="mcp-servers"></ul>
-      <ul id="recent"></ul>
+      <div id="panel-body">
+        <select id="provider"></select>
+        <div id="gate-container"></div>
+        <input id="prompt" type="text" placeholder="Ask Click Click…" />
+        <input id="provider-key" type="password" placeholder="Provider key (used once, never stored)" />
+        <ul id="mcp-servers"></ul>
+        <ul id="recent"></ul>
+      </div>
       <div id="confirm" hidden></div>
     </section>
     <script type="module" src="panel.js"></script>

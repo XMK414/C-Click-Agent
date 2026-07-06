@@ -53,6 +53,34 @@ test('denying a proposal never reaches the bridge', async () => {
   expect(calls).toEqual([]);
 });
 
+test('Approve/Deny buttons are within the actual window bounds a real mouse can reach', async () => {
+  // Playwright's .click() dispatches to an element's DOM coordinates via CDP
+  // regardless of whether those coordinates fall within the OS window's real,
+  // clipped pixel bounds — a structural blind spot for fixed-size Electron
+  // windows. This test catches what the other assist.e2e.ts tests can't: it
+  // asserts the buttons' bounding boxes are actually inside the panel window's
+  // content rect, the same box a physical mouse is confined to.
+  await launched.app.evaluate(
+    ({}, action) => globalThis.__ccE2E?.proposeAction(action as never, 'task'),
+    sampleAction,
+  );
+
+  const confirm = launched.panel.locator('#confirm');
+  await expect(confirm).toBeVisible();
+
+  const bounds = await launched.app.evaluate(() => globalThis.__ccE2E?.getPanelContentBounds());
+  expect(bounds).toBeDefined();
+
+  for (const label of ['Approve', 'Deny']) {
+    const box = await confirm.locator('button', { hasText: label }).boundingBox();
+    expect(box, `${label} button should be rendered`).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(bounds!.width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(bounds!.height);
+  }
+});
+
 test('a resubmitted decision for the same proposal cannot execute a second time', async () => {
   const proposalId = await launched.app.evaluate(
     ({}, action) => globalThis.__ccE2E?.proposeAction(action as never, 'mcp'),

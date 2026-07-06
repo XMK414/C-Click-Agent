@@ -14,11 +14,13 @@ function setupDom(): void {
   document.body.innerHTML = `
     <div id="strip"></div>
     <section id="panel" hidden>
-      <select id="provider"></select>
-      <div id="gate-container"></div>
-      <input id="prompt" type="text" />
-      <input id="provider-key" type="password" />
-      <ul id="recent"></ul>
+      <div id="panel-body">
+        <select id="provider"></select>
+        <div id="gate-container"></div>
+        <input id="prompt" type="text" />
+        <input id="provider-key" type="password" />
+        <ul id="recent"></ul>
+      </div>
       <div id="confirm" hidden></div>
     </section>
   `;
@@ -305,6 +307,35 @@ describe('initPanel — confirmation UI', () => {
 
     expect(decide).toHaveBeenCalledTimes(1);
     expect(decide).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', false);
+  });
+
+  it('hides the provider/prompt/key/gate section while a confirm is showing, and restores it after a decision', () => {
+    // Regression test: the panel window is a fixed 400px-tall Electron window
+    // with no scrollbar of its own. Rendering the confirm dialog alongside the
+    // still-visible provider select/prompt/key/gate sections stacks enough
+    // content to push Approve/Deny past the window's real, clippable bounds —
+    // reachable by Playwright's CDP-based .click() but not by an actual mouse.
+    let deliverProposal: ((raw: unknown) => void) | undefined;
+    const decide = vi.fn();
+    const bridge = makeBridge({
+      onProposal: (cb) => {
+        deliverProposal = cb;
+      },
+      decide,
+    });
+    initPanel(bridge, document);
+
+    const panelBody = document.getElementById('panel-body') as HTMLElement;
+    expect(panelBody.hidden).toBe(false);
+
+    deliverProposal!(makeFocusProposal());
+    expect(panelBody.hidden).toBe(true);
+
+    const confirm = document.getElementById('confirm')!;
+    const approveBtn = Array.from(confirm.querySelectorAll('button')).find((b) => b.textContent === 'Approve')!;
+    approveBtn.click();
+
+    expect(panelBody.hidden).toBe(false);
   });
 
   it('a malformed/untrusted proposal payload is dropped silently — no render, no throw', () => {

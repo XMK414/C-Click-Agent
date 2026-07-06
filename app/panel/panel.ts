@@ -179,6 +179,7 @@ function appendRecent(list: HTMLElement, text: string): void {
 export function initPanel(bridge: PanelBridge, doc: Document): void {
   const strip = doc.getElementById('strip');
   const panel = doc.getElementById('panel');
+  const panelBody = doc.getElementById('panel-body');
   const providerSelect = doc.getElementById('provider') as HTMLSelectElement | null;
   const gateContainer = doc.getElementById('gate-container');
   const promptInput = doc.getElementById('prompt') as HTMLInputElement | null;
@@ -188,6 +189,7 @@ export function initPanel(bridge: PanelBridge, doc: Document): void {
   if (
     !strip ||
     !panel ||
+    !panelBody ||
     !providerSelect ||
     !gateContainer ||
     !promptInput ||
@@ -233,11 +235,18 @@ export function initPanel(bridge: PanelBridge, doc: Document): void {
     // itself never depends on whether the transition was "valid").
     machine.transition('Expanded');
     panel!.hidden = false;
+    // The confirm dialog needs the whole 400px-fixed panel window to itself —
+    // provider select + prompt + key input + gate quiz stacked alongside it
+    // pushes Approve/Deny past the window's clippable bounds (a real mouse
+    // can never reach them there, even though Playwright's CDP-based .click()
+    // still can — see e2e/assist.e2e.ts's window-bounds test).
+    panelBody!.hidden = true;
     const view = toConfirmView(parsed.value.proposalId, parsed.value.origin, parsed.value.action);
     renderConfirm(confirmContainer!, view, (approved) => {
       bridge.decide(view.proposalId, approved);
       confirmContainer!.hidden = true;
       clearChildren(confirmContainer!);
+      panelBody!.hidden = false;
     });
   });
 

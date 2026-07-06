@@ -1,7 +1,21 @@
 /* app/panel/styles.css — glassmorphism strip/panel. Slice 1.5. */
-body { margin: 0; background: transparent; font: 13px system-ui, sans-serif; }
-#strip { width: 14px; height: 144px; border-radius: 8px; background: rgba(79,195,247,.35); transition: box-shadow .15s; }
+/* The panel window is a fixed 380x400 (see createPanelWindow() in app/main.ts)
+   with no OS chrome/scrollbar of its own — anything that overflows it is
+   simply unreachable to a real mouse. #panel takes the remaining height after
+   the strip via flex and scrolls its own content instead of overflowing the
+   window, so a real mouse can always reach it (defense-in-depth alongside
+   panel.ts hiding the other sections while the confirm dialog is shown). */
+html, body { height: 100%; }
+body { margin: 0; background: transparent; font: 13px system-ui, sans-serif; display: flex; flex-direction: column; }
+#strip { width: 14px; height: 144px; flex: none; border-radius: 8px; background: rgba(79,195,247,.35); transition: box-shadow .15s; }
 #strip:hover { box-shadow: 0 0 12px rgba(79,195,247,.6); }
-#panel { width: min(20vw, 360px); padding: 12px; border-radius: 12px;
+/* FS-E spec says "≤20% screen width" (specs/click-click.plan.md), but this panel
+   lives in its OWN small 380px-wide window, not a screen-sized overlay — `vw`
+   here resolves against that 380px window, not the display, so `20vw` was
+   really just 76px (and every line of confirm/description text wrapped hard,
+   which is what pushed Approve/Deny out of the window in the first place).
+   Fill the window's actual width instead; 360px keeps the original cap intent
+   in case this window is ever made wider. */
+#panel { width: 100%; max-width: 360px; padding: 12px; border-radius: 12px;
   background: rgba(20,20,24,.72); backdrop-filter: blur(12px); color: #fff;
-  box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  box-shadow: 0 8px 24px rgba(0,0,0,.35); flex: 1 1 auto; min-height: 0; overflow-y: auto; box-sizing: border-box; }

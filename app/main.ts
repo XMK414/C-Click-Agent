@@ -115,6 +115,11 @@ interface E2EHooks {
   getCursorPos(): CursorPos;
   /** True when execute-action is running against the mock bridge, not real OS input. */
   isDegradedToMock(): boolean;
+  /** The panel window's actual content-area size in pixels — a real mouse can never
+   * reach anything rendered outside this box, unlike Playwright's CDP-based .click(),
+   * which can dispatch to DOM coordinates regardless of the OS window's clipped bounds.
+   * Tests assert element bounding boxes against this, not just that .click() succeeds. */
+  getPanelContentBounds(): { width: number; height: number };
   /** Test-only kill-switch controls — same "directly callable" pattern as
    * feedCursor/triggerNextState above; the real triggers are the hotkey + tray. */
   haltKillSwitch(): void;
@@ -142,6 +147,11 @@ if (E2E) {
     isDegradedToMock: () => bridgeSelection.degradedToMock,
     haltKillSwitch: () => killSwitch.halt('e2e-test'),
     resumeKillSwitch: () => killSwitch.resume(),
+    getPanelContentBounds: () => {
+      if (!panelWindow) return { width: 0, height: 0 };
+      const size = panelWindow.getContentSize();
+      return { width: size[0] ?? 0, height: size[1] ?? 0 };
+    },
   };
 }
 
