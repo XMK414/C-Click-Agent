@@ -12,6 +12,13 @@
 appId: com.clickclick.app
 productName: Click Click
 
+# electron-builder auto-detects a CI environment (GITHUB_ACTIONS=true) + a
+# GitHub remote and defaults to trying to publish a GitHub Release, which
+# fails without a GH_TOKEN — that failure only showed up in CI, not locally,
+# for exactly that reason. This slice packages a local installer artifact for
+# testing; there is no release/publish workflow yet, so never attempt one.
+publish: null
+
 directories:
   # electron-builder defaults directories.output to "dist" too — same name as
   # our TypeScript build output (scripts/build.mjs). Must override, or the

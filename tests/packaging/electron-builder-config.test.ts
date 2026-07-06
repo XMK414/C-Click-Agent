@@ -14,6 +14,7 @@ const repoRoot = resolve(import.meta.dirname, '..', '..');
 interface ElectronBuilderConfig {
   appId?: string;
   productName?: string;
+  publish?: unknown;
   directories?: { output?: string; buildResources?: string };
   files?: string[];
   asarUnpack?: string[];
@@ -40,6 +41,15 @@ describe('electron-builder.yml — config sanity (catches bad edits before a bui
   it('output directory is NOT the default "dist" (collides with the compiled app in dist/)', () => {
     expect(config.directories?.output).toBeTruthy();
     expect(config.directories!.output).not.toBe('dist');
+  });
+
+  it('publish is explicitly disabled (null), not just absent', () => {
+    // electron-builder auto-detects a CI environment + a GitHub remote and defaults to
+    // trying to publish a GitHub Release unless this key is explicitly null — an absent
+    // key still triggers that auto-detection (the exact failure this line prevents: it
+    // only ever showed up in CI, never locally, since the auto-detect is CI-gated).
+    expect('publish' in config).toBe(true);
+    expect(config.publish).toBeNull();
   });
 
   it('asarUnpack includes *.node — without this the native addon ships sealed and unusable', () => {
