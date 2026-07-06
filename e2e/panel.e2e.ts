@@ -74,6 +74,11 @@ test('panel is genuinely clickable (accepts a click, unlike the overlay)', async
   await launched.panel.locator('#provider').click();
   // No throw = the click landed; a click-through window would never let this focus.
   await expect(launched.panel.locator('#provider')).toBeFocused();
+  // .click() on a <select> opens its native OS dropdown (a genuine native popup on
+  // macOS, unlike selectOption() elsewhere in this file, which never opens it). Left
+  // open, afterEach's app.close() hangs waiting on that popup's run loop — deterministic
+  // on macOS CI, not a flake. Escape dismisses it before the app tries to quit.
+  await launched.panel.keyboard.press('Escape');
 });
 
 test('gate quiz UX end-to-end: real warning + redacted questions, wrong then right answers', async () => {
