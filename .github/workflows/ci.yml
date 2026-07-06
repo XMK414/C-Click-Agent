@@ -27,7 +27,11 @@ jobs:
   # assertion, the moveCursor round-trip, and the native VK guard for real.
   native-windows:
     needs: core
-    runs-on: windows-latest
+    # Pinned, not windows-latest: that label currently resolves to a preview
+    # image (windows-2025-vs2026) whose bundled node-gyp doesn't recognize the
+    # VS install on it ("unknown version 'undefined'"). windows-2022 is the
+    # version actually verified to build this addon (matches local dev).
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,7 +67,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        # windows-latest pinned to windows-2022 (see native-windows comment): on
+        # the current windows-latest preview image, the Electron binary fetch
+        # raced past every test's 30s beforeEach timeout, cascading into 19
+        # failures. windows-2022 is a stable, previously-verified image.
+        os: [windows-2022, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
