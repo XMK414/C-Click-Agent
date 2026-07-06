@@ -81,3 +81,24 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:e2e
+
+  # Packaging (slice 1.9): builds the real Windows installer end to end
+  # (native addon -> compiled JS/bundled renderer -> electron-builder NSIS),
+  # then proves it two ways: a crude existence+size check here, and the real
+  # assertion (tests/packaging/native-addon-ships.test.ts) that the native
+  # addon actually shipped unpacked rather than silently degrading to mock.
+  # macOS packaging waits for slice 2.1's real macOS addon (see
+  # specs/slice-1.9-kickoff.md) — Windows packaging doesn't need to wait.
+  package-win:
+    needs: [core, native-windows]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run package:win
+      - run: npm run assert-installer
+      - run: npm run test -- tests/packaging   # native-addon-ships assertions run for real now

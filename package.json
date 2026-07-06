@@ -4,6 +4,7 @@
   "private": true,
   "description": "Click Click — Everyone's 1st Agent. Cross-platform screen buddy: guides, assists (confirm-gated), and reasons via BYO-key LLM providers.",
   "type": "module",
+  "main": "dist/app/main.js",
   "engines": {
     "node": ">=20"
   },
@@ -19,7 +20,13 @@
     "build:native:win": "npm run gen:vkmap && node-gyp rebuild -C app/platform/native",
     "build:native:mac": "node-gyp rebuild -C app/platform/native",
     "pretest:e2e": "node scripts/build-e2e.mjs",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "build": "node scripts/build.mjs",
+    "prepackage:win": "npm run build:native:win && npm run build",
+    "package:win": "electron-builder --win",
+    "prepackage:mac": "npm run build:native:mac && npm run build",
+    "package:mac": "electron-builder --mac",
+    "assert-installer": "node scripts/assert-installer.mjs"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -28,14 +35,17 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/express": "^4.17.21",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.14.0",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitest/coverage-v8": "^3.2.6",
     "electron": "43.0.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
     "eslint": "^9.9.0",
+    "js-yaml": "^5.2.1",
     "jsdom": "^24.1.1",
     "node-addon-api": "^8.0.0",
     "supertest": "^7.0.0",

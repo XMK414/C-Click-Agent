@@ -231,3 +231,148 @@ something to show without a real model/task/MCP integration yet.
 - `e2e/assist.e2e.ts` — the whole flow proven in the REAL panel window:
   approve executes on the mock bridge exactly once, deny never touches it,
   and a replayed decision for an already-consumed proposal is a no-op.
+
+---
+
+# Slice 1.9 — Packaging (Windows `.exe`, macOS `.dmg`)
+
+Turns a working dev checkout into a real installer. `electron-builder.yml` is
+the config; `npm run package:win` (or `:mac`) builds it.
+
+```
+npm run package:win          # rebuilds the native addon + JS, then packages
+npm run assert-installer     # crude existence+size check (also runs in CI)
+npm run test -- tests/packaging   # the real assertions — native addon actually shipped
+```
+
+## The code-signing trade-off — read this before installing anywhere real
+
+**This build is unsigned. That is a known, deliberate P1 scope call, not an
+oversight.** Concretely, this means:
+
+- **Windows:** running the installer shows a SmartScreen "Windows protected
+  your PC" / "Unknown publisher" prompt. It's not a hard block — "More info" →
+  "Run anyway" proceeds — but it looks scary to someone who wasn't expecting
+  it, which matters a lot for an app whose whole pitch is "everyone's first
+  agent."
+- **macOS:** an unsigned, unnotarized `.dmg` is Gatekeeper-blocked outright
+  unless the user right-click → Open's it, or disables Gatekeeper. This is a
+  bigger deal than the Windows warning and isn't a great first-run experience.
+- **Fixing this for real needs a Windows EV/OV code-signing certificate and an
+  Apple Developer Program membership + notarization — both require legal
+  identity and payment information that only Kyle can provide.** This is
+  tracked as an open item, not silently deferred (see
+  `specs/slice-1.9-kickoff.md`'s "Open items (Kyle-only, don't block on
+  these)"). Until then, every install of this app will show one of the two
+  warnings above — tell people that up front.
+
+`electron-builder.yml` documents this in-line too (`mac.gatekeeperAssess:
+false`, with the reason in a comment) — `tests/packaging/electron-builder-config.test.ts`
+asserts the word "unsigned" actually appears next to that config key, so the
+comment can't silently rot into a stale excuse.
+
+## ASAR integrity — what "enabled" actually means here
+
+Verified against the installed electron-builder version's own
+`configuration.d.ts` (not assumed — the config key for this has moved between
+electron-builder releases): `disableAsarIntegrity` defaults to `false`, so
+electron-builder computes and embeds an integrity hash into the installer
+automatically. That alone only *computes* the hash. Enforcing it at runtime —
+actually refusing to load tampered app content — is a separate mechanism:
+Electron's own fuses, flipped by `electronFuses.enableEmbeddedAsarIntegrityValidation`
++ `onlyLoadAppFromAsar` in `electron-builder.yml`. Both are required together;
+the second is what stops a tampered *unpacked* copy sitting next to `app.asar`
+from being loaded instead.
+
+## Clean-machine smoke test — what was actually verified, and where
+
+This dev machine has Node, VS Build Tools, and the whole toolchain installed —
+per the kickoff spec's own caveat, that means it **cannot prove a truly clean
+install works**. What follows is what was verified here, stated honestly
+rather than rounded up to "passed":
+
+- [x] **Installer runs and installs without admin** (NSIS `oneClick`, per-user,
+      `%LOCALAPPDATA%\Programs\click-click`).
+- [x] **Confirmed genuinely unsigned** — `Get-AuthenticodeSignature` on the
+      built `.exe` returns `NotSigned`, not a dev cert picked up by accident.
+- [ ] **"Unknown Publisher" SmartScreen warning** — NOT reproduced here. A
+      locally-built `.exe` has no Mark-of-the-Web zone identifier (that only
+      gets attached by a browser/Explorer on a real download), so SmartScreen's
+      interception doesn't trigger the same way it would for a real user
+      downloading this from the internet. Needs a real download to verify.
+- [x] **App launches without the dev toolchain being needed at runtime** — the
+      packaged Electron + native addon are self-contained; nothing in
+      `app.asar` requires Node/VS Build Tools to be present on the machine
+      running it.
+- [x] **Overlay renders** — transparent background, buddy-cursor mirror dot
+      visible (verified via a direct `PrintWindow` capture of the overlay
+      HWND, not a full-screen screenshot — the overlay is genuinely
+      always-on-top but can still be layered under other topmost windows in a
+      shared desktop session, which a screen-wide capture would miss).
+- [x] **Panel renders** — collapsed strip by default, expands into the full
+      form on a real, OS-level mouse hover (not simulated via Playwright/CDP).
+- [x] **The native addon actually loaded for real, not silently mocked** — no
+      `platform_bridge_degraded` warning in the app's own log output on
+      launch; independently confirmed by `tests/packaging/native-addon-ships.test.ts`
+      asserting the compiled `.node` file is genuinely present, unpacked,
+      alongside `app.asar`.
+- [x] **Uninstall is clean** — install directory removed, Start Menu shortcut
+      removed, zero lingering `Click Click.exe` processes after running
+      `Uninstall Click Click.exe /S`.
+- [~] **Kill-switch hotkey / tray in the packaged app** — not crash-verified
+      visually (avoided further full-screen captures after one accidentally
+      captured personal account details from an unrelated open window — a
+      reminder that screen-wide captures on a real desktop are not a safe
+      default verification method). Indirect evidence it initialized: the
+      dev-only proposal-demo code that runs *after* tray creation in
+      `app/main.ts` fired correctly, which could not happen if
+      `createKillSwitchTray()` had thrown.
+- [ ] **Real cursor movement via a guided task, in the packaged app
+      specifically** — NOT completed. See the bug below: the confirm dialog's
+      Approve/Deny buttons were unreachable in the state this session
+      triggered them in, so the click that would have proven this couldn't be
+      driven end-to-end this time. The exact same compiled `windows-bridge.node`
+      binary this package ships (byte-identical — packaging doesn't recompile
+      it, it copies the artifact `build:native:win` already produced) is
+      independently proven to move the real cursor by
+      `tests/native/windows-bridge.smoke.test.ts` and `e2e/assist-native.e2e.ts`
+      on this same machine — but that's evidence by construction, not a
+      fresh, live demonstration inside the installed package.
+
+### A real bug this smoke test surfaced (not fixed here — out of 1.9's scope)
+
+With the panel already showing the provider/prompt/key fields, an incoming
+proposal's confirm dialog (`Approve`/`Deny`) can render **below the panel's
+fixed 400px window height** — physically unreachable by a real mouse click,
+even though every existing Playwright e2e test that clicks "Approve" passes.
+That's not a contradiction: Playwright drives clicks via Chrome DevTools
+Protocol, which can dispatch to an element's layout coordinates regardless of
+whether those coordinates fall within the OS window's actual visible/clipped
+pixel bounds — a real user with a real mouse cannot reach past the window
+edge the way CDP can. This is exactly the class of bug a genuine
+device-level smoke test exists to catch and pure e2e automation structurally
+cannot. Filed as a follow-up rather than patched here, since it's a
+pre-existing panel-layout issue (slice 1.5/2.3), not a packaging regression —
+fixing it under a packaging slice would be its own kind of scope creep.
+
+## Automated coverage (slice 1.9)
+
+- `tests/packaging/native-addon-ships.test.ts` — after `npm run package:win`,
+  asserts the compiled native addon is genuinely present (and non-trivially
+  sized) in the unpacked output, and that `app.asar` itself exists alongside
+  it — the automated version of "did this silently degrade to the mock
+  bridge." Self-skips (same pattern as the slice 1.8 native smoke test) when
+  no packaged output exists yet.
+- `tests/packaging/electron-builder-config.test.ts` — catches a bad config
+  edit before a multi-minute build proves it broken: `asarUnpack` includes
+  `*.node`, ASAR integrity isn't silently disabled, both required
+  `electronFuses` are set, icons resolve to real files on disk, the output
+  directory isn't left at electron-builder's default (which would collide
+  with the compiled app in `dist/`), and the unsigned-build reason is actually
+  documented in the config file, not just asserted here.
+- `tests/packaging/version-consistency.test.ts` — `package.json`'s version is
+  the one true version (electron-builder.yml doesn't declare a competing one),
+  and `main` points at the actual compiled entry.
+- CI's `package-win` job runs the full build on `windows-2022` and asserts the
+  installer artifact exists and is non-trivially sized (`scripts/assert-installer.mjs`) —
+  the crude, fast, always-on check; the tests above are the real one.

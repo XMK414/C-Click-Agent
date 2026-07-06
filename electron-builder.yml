@@ -1,0 +1,73 @@
+# electron-builder.yml — slice 1.9 packaging.
+#
+# Source of truth for what "shipping the native addon" and "ASAR integrity"
+# actually mean at this electron-builder version (26.15.3) — verified against
+# node_modules/app-builder-lib/out/configuration.d.ts, not assumed:
+#   - ASAR integrity HASH COMPUTATION is on by default (disableAsarIntegrity:
+#     false is the default — left unset here on purpose, see below).
+#   - RUNTIME ENFORCEMENT of that hash needs the electron fuses
+#     enableEmbeddedAsarIntegrityValidation + onlyLoadAppFromAsar (Electron's
+#     own mechanism, not electron-builder's) — set explicitly below.
+
+appId: com.clickclick.app
+productName: Click Click
+
+directories:
+  # electron-builder defaults directories.output to "dist" too — same name as
+  # our TypeScript build output (scripts/build.mjs). Must override, or the
+  # installer output and the compiled app source collide in one folder.
+  output: dist-release
+
+# dist/**/* is scripts/build.mjs's output (compiled JS + bundled renderer +
+# copied static assets + the compiled native addon, if built). The native
+# build directory also contains node-gyp's intermediate MSBuild artifacts
+# (.obj/.pdb/.vcxproj/binding.sln/...) alongside the actual .node binary —
+# exclude that whole tree, then re-include only the compiled binary itself.
+# package.json is needed for electron-builder to read "main" + dependencies.
+files:
+  - dist/**/*
+  - package.json
+  - '!dist/app/platform/native/build/**/*'
+  - dist/app/platform/native/build/Release/*.node
+
+# ASAR archives cannot execute native .node bindings from inside the archive
+# (slice 1.9 kickoff's single most important warning) — without this, the
+# packaged app would silently degrade to the mock (guide-only) bridge with
+# zero error. tests/packaging/native-addon-ships.test.ts asserts this for real
+# after a build, rather than trusting this line alone.
+asarUnpack:
+  - '**/*.node'
+
+# asar: true is already electron-builder's default; stated explicitly because
+# the whole ASAR-integrity story below depends on it.
+asar: true
+
+win:
+  target: nsis
+  icon: assets/brand/icon.ico
+
+mac:
+  target: dmg
+  icon: assets/brand/icon.png
+  hardenedRuntime: true
+  # No real Apple Developer Program cert exists yet (P1 ships unsigned — see
+  # docs/demo-P1.md and specs/slice-1.9-kickoff.md's Kyle-only open items).
+  # gatekeeperAssess would fail the build outright without one; disabled until
+  # a real cert lands, not as a permanent choice.
+  gatekeeperAssess: false
+
+# Electron's own security fuses (https://github.com/electron/fuses), flipped
+# into the packaged binary at build time — a materially different mechanism
+# from ASAR integrity HASHING above: this is what actually REFUSES to load
+# unvalidated app code at runtime.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  # The pair that makes ASAR integrity real: validate app.asar's content
+  # against its embedded hash on load, AND make app.asar the only place
+  # Electron will ever load app code from (without onlyLoadAppFromAsar, a
+  # tampered unpacked copy sitting next to app.asar could still be loaded).
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true

@@ -2,6 +2,7 @@ node_modules/
 coverage/
 dist/
 dist-e2e/
+dist-release/
 playwright-report/
 test-results/
 out/
@@ -15,3 +16,4 @@ logs/
 Thumbs.db
 app/platform/native/build/
 .keys/
+.node-gyp-cache/
