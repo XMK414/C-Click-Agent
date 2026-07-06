@@ -8,7 +8,9 @@
 // between mint and execute, even though the proposal schema validated the
 // action's shape once already.
 
-import { assertKeyTokens, type PlatformBridge } from '../platform/index.js';
+import { type PlatformBridge } from '../platform/index.js';
+import { assertKeyTokens } from '../platform/key-tokens.js';
+import { killSwitch } from './kill-switch.js';
 import type { ProposedAction } from '../models/types.js';
 import type { DisplayBounds } from '../overlay/render-model.js';
 
@@ -16,6 +18,13 @@ export class InvalidActionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'InvalidActionError';
+  }
+}
+
+export class InjectionHaltedError extends Error {
+  constructor() {
+    super('Injection halted by kill switch.');
+    this.name = 'InjectionHaltedError';
   }
 }
 
@@ -36,6 +45,12 @@ export function executeAction(
   action: ProposedAction,
   options: ExecuteActionOptions = {},
 ): void {
+  // Belt-and-suspenders with the bridge-layer check in windows.ts (§12): a halted
+  // kill switch must stop an already-approved proposal here too, before any bridge
+  // method is even called.
+  if (killSwitch.isHalted()) {
+    throw new InjectionHaltedError();
+  }
   switch (action.actionType) {
     case 'keys': {
       if (!action.keys || action.keys.length === 0) {

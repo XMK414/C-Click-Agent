@@ -10,6 +10,10 @@ export default [
       '**/*.html',
       '**/*.css',
       'coverage/**',
+      // Compiled e2e output (scripts/build-e2e.mjs) — only exists locally/in CI
+      // after `npm run test:e2e`'s pretest hook; never checked in (.gitignore).
+      'dist-e2e/**',
+      'dist/**',
     ],
   },
   {

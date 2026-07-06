@@ -16,19 +16,18 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run check:vkmap   # native VK header must match app/platform/vk-map.json
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test -- --coverage
 
-  # Native addons cannot be cross-compiled — each OS builds its own (plan §5).
-  # Job stubs now; the native build/test steps activate with slice 1.8 / 2.1.
-  native:
+  # Windows native lane (slice 1.8): build the addon, then run the full test
+  # suite — the native smoke test (tests/native/windows-bridge.smoke.test.ts)
+  # auto-runs here (and auto-skips in `core`), exercising the export-surface
+  # assertion, the moveCursor round-trip, and the native VK guard for real.
+  native-windows:
     needs: core
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,15 +36,28 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      # - run: npm run build:native:win   # enable in slice 1.8 (windows-latest)
-      # - run: npm run build:native:mac   # enable in slice 2.1 (macos-latest)
-      # - run: npm run test:native        # bridge wrapper + safety tests
+      - run: npm run build:native:win   # runs gen:vkmap, then node-gyp rebuild
+      - run: npm run test               # native smoke test runs for real here (win32)
+      - run: npm run test:e2e           # includes the real-input assist e2e (1.8)
 
-  # Playwright-Electron e2e: asserts runtime properties jsdom/unit tests
-  # structurally cannot (click-through, real renderer isolation, CSP
-  # enforcement, cursor mirroring). windows-latest/macos-latest runners have a
-  # real interactive desktop session, so Electron runs headed with no xvfb
-  # needed. Kept out of the fast core lane entirely — its own job/command.
+  # macOS native lane: stub until slice 2.1 lands the macOS addon.
+  native-macos:
+    needs: core
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # - run: npm run build:native:mac  # enable in slice 2.1
+
+  # Playwright-Electron e2e (mock bridge): asserts runtime properties jsdom/unit
+  # tests structurally cannot (click-through, real renderer isolation, CSP
+  # enforcement, cursor mirroring). Runs against the mock bridge everywhere —
+  # native-windows above is the lane that exercises real OS input.
   e2e:
     needs: core
     strategy:

@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { TASKS, getTask, tasksForPlatform } from '../../app/tasks/registry.js';
-import { ALLOWED_KEY_TOKENS } from '../../app/platform/index.js';
+import { ALLOWED_KEY_TOKENS } from '../../app/platform/key-tokens.js';
 
 describe('task registry', () => {
   it('ships at least 3 tasks (DoD Phase 1)', () => {

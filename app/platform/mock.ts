@@ -6,12 +6,12 @@
 // the same validation path is exercised as the real bridge.
 
 import {
-  assertKeyTokens,
   type CaptureScope,
   type ClickType,
   type CursorPos,
   type PlatformBridge,
 } from './index.js';
+import { assertKeyTokens } from './key-tokens.js';
 
 export interface MockCall {
   fn: keyof PlatformBridge;

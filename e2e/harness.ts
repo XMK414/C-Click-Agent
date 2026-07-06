@@ -36,6 +36,13 @@ export interface LaunchedApp {
 export interface LaunchOptions {
   /** Defaults to true — sets CC_E2E=1 so main.ts exposes the introspection/control hook. */
   e2e?: boolean;
+  /**
+   * Defaults to false: main.ts forces the deterministic mock bridge under
+   * CC_E2E, which is what most e2e tests assert against (getBridgeCalls()).
+   * Set true (assist-native.e2e.ts, slice 1.8 only) to let main.ts select the
+   * real platform bridge instead, so the test can prove real OS input.
+   */
+  realBridge?: boolean;
 }
 
 function identify(page: Page): 'overlay' | 'panel' {
@@ -55,6 +62,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       NODE_ENV: 'test',
       CC_DATA_DIR: dataDir,
       ...(e2e ? { CC_E2E: '1' } : { CC_E2E: '' }),
+      ...(options.realBridge ? { CC_E2E_REAL_BRIDGE: '1' } : { CC_E2E_REAL_BRIDGE: '' }),
     },
   });
 

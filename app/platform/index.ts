@@ -3,6 +3,9 @@
 // Canonical PlatformBridge contract (plan FS-A). The overlay/panel never touch
 // native input; only the main process, and only after user confirmation.
 
+import { createRequire } from 'node:module';
+import { createMockBridge } from './mock.js';
+
 export interface CursorPos {
   x: number;
   y: number;
@@ -30,43 +33,74 @@ export class UnsupportedPlatformError extends Error {
   }
 }
 
-/** Key tokens the bridge accepts. Native maps these to VK/keycodes. */
-export const ALLOWED_KEY_TOKENS: ReadonlySet<string> = new Set([
-  'CTRL', 'ALT', 'SHIFT', 'META', 'WIN', 'CMD',
-  'ENTER', 'ESC', 'TAB', 'SPACE', 'BACKSPACE', 'DELETE',
-  'UP', 'DOWN', 'LEFT', 'RIGHT', 'HOME', 'END',
-  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-]);
-
-export function assertKeyTokens(sequence: string[]): void {
-  for (const token of sequence) {
-    if (!ALLOWED_KEY_TOKENS.has(token)) {
-      throw new Error(`Disallowed key token: ${JSON.stringify(token)}`);
-    }
-  }
+/** Result of selecting a bridge: the bridge itself + whether we fell back to mock. */
+export interface BridgeSelection {
+  bridge: PlatformBridge;
+  /** True when the native addon failed to load and we degraded to the mock bridge. */
+  degradedToMock: boolean;
+  /** Human-facing reason for the banner when degraded. */
+  reason?: string;
 }
 
 /**
- * Select the platform bridge. Real native wrappers land in slices 1.8 (win) and
- * 2.1 (mac). Until a native addon loads, callers fall back to the mock bridge so
- * every UI/gateway slice is unblocked. `overrideForTest` supports DI in tests.
+ * Dependencies the selector needs to build a real native bridge. Injected by main
+ * (which owns Electron's `screen` API and the kill-switch state). Kept as a parameter
+ * so this module stays Electron-free and unit-testable.
+ */
+export interface PlatformSelectDeps {
+  getDisplays: () => Array<{ x: number; y: number; width: number; height: number }>;
+  isInjectionHalted: () => boolean;
+  log?: (level: 'info' | 'warn', event: string, data?: Record<string, unknown>) => void;
+  /** Test seam: build the win32 bridge (defaults to the real wrapper). */
+  buildWindowsBridge?: (deps: PlatformSelectDeps) => PlatformBridge;
+}
+
+/**
+ * Select the platform bridge. On Windows, load the native addon; if it fails, degrade
+ * to the mock bridge with a visible-banner reason — NEVER a silent failure (§6). macOS
+ * lands in slice 2.1. Callers without native deps get the guide-only mock everywhere.
  */
 export function createPlatformBridge(
   platform: NodeJS.Platform = process.platform,
-): PlatformBridge {
+  deps?: PlatformSelectDeps,
+): BridgeSelection {
   switch (platform) {
     case 'win32': {
-      // Slice 1.8 swaps this for the real wrapper over windows-bridge.node.
-      throw new UnsupportedPlatformError('win32:native-not-built');
+      if (!deps) {
+        // No native deps supplied (e.g. a headless/test context) → guide-only mock.
+        return { bridge: createMockBridge(), degradedToMock: true, reason: 'no-native-deps' };
+      }
+      try {
+        const bridge = deps.buildWindowsBridge
+          ? deps.buildWindowsBridge(deps)
+          : buildRealWindowsBridge(deps);
+        return { bridge, degradedToMock: false };
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        deps.log?.('warn', 'native_addon_load_failed', { platform, reason });
+        return { bridge: createMockBridge(), degradedToMock: true, reason };
+      }
     }
     case 'darwin': {
-      // Slice 2.1 swaps this for the real wrapper over macos-bridge.node.
-      throw new UnsupportedPlatformError('darwin:native-not-built');
+      // Slice 2.1 swaps this for the real macOS wrapper; mock keeps the app usable.
+      return { bridge: createMockBridge(), degradedToMock: true, reason: 'darwin:native-not-built' };
     }
     default:
-      throw new UnsupportedPlatformError(platform);
+      return { bridge: createMockBridge(), degradedToMock: true, reason: `${platform}:unsupported` };
   }
+}
+
+/** Lazily wire the real Windows wrapper so this module never imports native at load time. */
+function buildRealWindowsBridge(deps: PlatformSelectDeps): PlatformBridge {
+  // createRequire(import.meta.url), not a bare `require`: a bare require inside an
+  // ESM file resolves relative to whatever module happens to be calling it, not
+  // this file's own directory (see windows.ts's requireAddon for the same fix).
+  const require = createRequire(import.meta.url);
+  const { createWindowsBridge, requireAddon } = require('./windows.js');
+  return createWindowsBridge({
+    loadAddon: requireAddon,
+    getDisplays: deps.getDisplays,
+    isInjectionHalted: deps.isInjectionHalted,
+    log: deps.log,
+  });
 }

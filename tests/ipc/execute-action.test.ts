@@ -1,12 +1,36 @@
 // tests/ipc/execute-action.test.ts
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { createMockBridge } from '../../app/platform/mock.js';
-import { executeAction, InvalidActionError } from '../../app/ipc/execute-action.js';
+import { executeAction, InjectionHaltedError, InvalidActionError } from '../../app/ipc/execute-action.js';
+import { killSwitch } from '../../app/ipc/kill-switch.js';
 import type { ProposedAction } from '../../app/models/types.js';
 import type { DisplayBounds } from '../../app/overlay/render-model.js';
 
 const DISPLAYS: DisplayBounds[] = [{ id: 0, x: 0, y: 0, width: 1920, height: 1080 }];
+
+describe('executeAction — kill switch', () => {
+  afterEach(() => {
+    killSwitch.resume(); // never leak a halted switch into other tests in this file
+  });
+
+  it('an approved proposal never reaches the bridge while halted', () => {
+    const bridge = createMockBridge();
+    const action: ProposedAction = { actionType: 'focus', targetWindowTitle: 'Settings', description: 'x' };
+    killSwitch.halt('test');
+    expect(() => executeAction(bridge, action)).toThrow(InjectionHaltedError);
+    expect(bridge.calls).toHaveLength(0);
+  });
+
+  it('resuming allows the same action through again', () => {
+    const bridge = createMockBridge();
+    const action: ProposedAction = { actionType: 'focus', targetWindowTitle: 'Settings', description: 'x' };
+    killSwitch.halt('test');
+    killSwitch.resume();
+    expect(() => executeAction(bridge, action)).not.toThrow();
+    expect(bridge.calls).toHaveLength(1);
+  });
+});
 
 describe('executeAction — keys', () => {
   it('sends the whitelisted key sequence to the bridge', () => {

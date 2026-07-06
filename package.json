@@ -13,8 +13,10 @@
     "test:cov": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "verify": "npm run typecheck && npm run lint && npm run test",
-    "build:native:win": "node-gyp rebuild -C app/platform/native",
+    "verify": "npm run check:vkmap && npm run typecheck && npm run lint && npm run test",
+    "gen:vkmap": "node scripts/gen-vk-header.mjs",
+    "check:vkmap": "node scripts/gen-vk-header.mjs --check",
+    "build:native:win": "npm run gen:vkmap && node-gyp rebuild -C app/platform/native",
     "build:native:mac": "node-gyp rebuild -C app/platform/native",
     "pretest:e2e": "node scripts/build-e2e.mjs",
     "test:e2e": "playwright test -c e2e/playwright.config.ts"
@@ -35,11 +37,12 @@
     "esbuild": "^0.28.1",
     "eslint": "^9.9.0",
     "jsdom": "^24.1.1",
+    "node-addon-api": "^8.0.0",
     "supertest": "^7.0.0",
     "typescript": "^5.5.4",
     "vitest": "^3.2.6"
   },
   "comments": {
-    "note": "Phase-1 scaffold. node-addon-api, ws, ps-list, puppeteer-core are added at the slice that first needs them (see specs/click-click.plan.md §5 pinned deps). Slice 1.6 adds express (gateway) + supertest (dev, gateway HTTP tests). Slice 1.4 adds electron (dev, overlay shell) + jsdom (dev, renderer DOM test). The pure-logic + jsdom core stays Electron-free in CI; the live Electron window is validated manually per docs/demo-P1.md."
+    "note": "Phase-1 scaffold. ws, ps-list, puppeteer-core are added at the slice that first needs them (see specs/click-click.plan.md §5 pinned deps). Slice 1.6 adds express (gateway) + supertest (dev, gateway HTTP tests). Slice 1.4 adds electron (dev, overlay shell) + jsdom (dev, renderer DOM test). Slice 1.8 adds node-addon-api (dev, native Windows bridge). The pure-logic + jsdom core stays Electron-free in CI; the live Electron window is validated manually per docs/demo-P1.md."
   }
 }

@@ -10,7 +10,7 @@
 // process. Every panel -> gateway call is mediated by an ipcMain.handle below;
 // the renderer never sees the token or the URL, only JSON results.
 
-import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -22,7 +22,9 @@ import { createGatewayServer } from '../gateway/server.js';
 import { createPassStore } from '../gateway/policy/pass-store.js';
 import { PROVIDERS } from '../gateway/providers/registry.js';
 import { askAgent, getGateStatus, getQuiz, submitQuiz, type GatewayClientConfig } from './models/router.js';
-import { createMockBridge } from './platform/mock.js';
+import { createPlatformBridge, type CursorPos, type PlatformBridge } from './platform/index.js';
+import { createMockBridge, type MockBridge } from './platform/mock.js';
+import { killSwitch } from './ipc/kill-switch.js';
 import { createProposalRegistry } from './ipc/proposal-registry.js';
 import { registerAutomationHandlers, sendProposal } from './ipc/handlers.js';
 import type { ProposedAction } from './models/types.js';
@@ -32,6 +34,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const CURSOR_POLL_MS = 16; // ~60Hz sampling; cursor-mirror.ts throttles the actual emit rate
 const CURSOR_STATES = ['idle', 'listening', 'thinking', 'executing', 'success', 'error'] as const;
 const PANEL_SUMMON_SHORTCUT = 'CommandOrControl+Shift+Space';
+// Deliberately NOT CommandOrControl (doc/plan §12): the kill switch must be one
+// fixed chord on every OS, not remapped by the platform's usual modifier swap.
+const KILL_SWITCH_SHORTCUT = 'Control+Alt+Backspace';
 
 /** Model picked when the panel doesn't (yet) expose model selection — slice 1.5 is provider-only. */
 const DEFAULT_MODEL_FOR_PROVIDER: Readonly<Record<string, string>> = Object.freeze({
@@ -43,10 +48,37 @@ const DEFAULT_MODEL_FOR_PROVIDER: Readonly<Record<string, string>> = Object.free
 let overlayWindow: BrowserWindow | null = null;
 let panelWindow: BrowserWindow | null = null;
 let gatewayConfig: GatewayClientConfig | null = null;
+let tray: Tray | null = null;
 
-// Real OS input injection arrives with the native bridges (1.8/2.1); this
-// slice proves the confirm-then-execute pathway on the mock bridge.
-const platformBridge = createMockBridge();
+// console.info/log are lint-disallowed project-wide (no-console); 'info'-level
+// platform events still go to console.warn rather than being silently dropped.
+function logPlatform(level: 'info' | 'warn', event: string, data?: Record<string, unknown>): void {
+  console.warn(`[platform:${level}] ${event}`, data ?? {});
+}
+
+// Slice 1.8: on win32 this loads the real native bridge; on any load failure
+// (including "not built yet") it degrades to the mock bridge + a reason,
+// never a silent failure (§6). getDisplayBounds/killSwitch are passed in
+// below, once they're both declared, so windows.ts never needs Electron.
+//
+// The e2e suite (slice 2.3+) is written against the deterministic MOCK bridge
+// by default — assist.e2e.ts/panel.e2e.ts assert exact mock call logs, which
+// only exist on MockBridge. On a machine where the native addon happens to be
+// built, letting selection "win" would silently switch those tests onto the
+// real bridge and break their assertions. CC_E2E_REAL_BRIDGE is the explicit
+// opt-in the real-input e2e (assist-native.e2e.ts) uses instead.
+const forceMockForE2E = process.env.CC_E2E === '1' && process.env.CC_E2E_REAL_BRIDGE !== '1';
+const bridgeSelection = forceMockForE2E
+  ? { bridge: createMockBridge(), degradedToMock: true, reason: 'e2e-forced-mock' }
+  : createPlatformBridge(process.platform, {
+      getDisplays: () => getDisplayBounds(),
+      isInjectionHalted: () => killSwitch.isHalted(),
+      log: logPlatform,
+    });
+const platformBridge: PlatformBridge = bridgeSelection.bridge;
+if (bridgeSelection.degradedToMock) {
+  logPlatform('warn', 'platform_bridge_degraded', { reason: bridgeSelection.reason });
+}
 const proposalRegistry = createProposalRegistry();
 
 // --- e2e-only introspection + control hook (Playwright, specs/e2e-electron-scope.md) ---
@@ -76,8 +108,17 @@ interface E2EHooks {
   triggerNextState(): void;
   pushGuidance(raw: unknown): void;
   proposeAction(action: ProposedAction, origin: 'model' | 'task' | 'mcp'): string | null;
-  /** Read-only view into the mock PlatformBridge's call log, for e2e assertions. */
+  /** Read-only view into the mock PlatformBridge's call log. Empty when the real
+   * (non-mock) bridge is active — use getCursorPos() for the native-input e2e instead. */
   getBridgeCalls(): ReadonlyArray<{ fn: string; args: unknown[] }>;
+  /** Works against either bridge — the real-input e2e (1.8) reads the actual OS cursor. */
+  getCursorPos(): CursorPos;
+  /** True when execute-action is running against the mock bridge, not real OS input. */
+  isDegradedToMock(): boolean;
+  /** Test-only kill-switch controls — same "directly callable" pattern as
+   * feedCursor/triggerNextState above; the real triggers are the hotkey + tray. */
+  haltKillSwitch(): void;
+  resumeKillSwitch(): void;
 }
 
 declare global {
@@ -91,7 +132,16 @@ if (E2E) {
     triggerNextState: () => undefined,
     pushGuidance: () => undefined,
     proposeAction: () => null,
-    getBridgeCalls: () => platformBridge.calls.map((c) => ({ fn: c.fn, args: c.args })),
+    // Only the mock bridge exposes .calls; guarded by degradedToMock so this never
+    // reaches into a real bridge that doesn't have it.
+    getBridgeCalls: () =>
+      bridgeSelection.degradedToMock
+        ? (platformBridge as MockBridge).calls.map((c) => ({ fn: c.fn, args: c.args }))
+        : [],
+    getCursorPos: () => platformBridge.getCursorPos(),
+    isDegradedToMock: () => bridgeSelection.degradedToMock,
+    haltKillSwitch: () => killSwitch.halt('e2e-test'),
+    resumeKillSwitch: () => killSwitch.resume(),
   };
 }
 
@@ -208,6 +258,28 @@ function createPanelWindow(): BrowserWindow {
 
   void win.loadFile(join(here, 'panel', 'panel.html'));
   return win;
+}
+
+/** Tray icon with an always-reachable Stop/Resume — the kill switch shouldn't
+ * depend on remembering a hotkey (§12). */
+function createKillSwitchTray(): Tray {
+  const icon = nativeImage.createFromPath(join(here, 'assets', 'tray-icon.png'));
+  const t = new Tray(icon);
+  t.setToolTip('Click Click');
+  const rebuildMenu = (): void => {
+    t.setContextMenu(
+      Menu.buildFromTemplate([
+        killSwitch.isHalted()
+          ? { label: 'Resume automation', click: () => killSwitch.resume() }
+          : { label: 'Stop automation', click: () => killSwitch.halt('tray') },
+        { type: 'separator' },
+        { label: 'Quit', click: () => app.quit() },
+      ]),
+    );
+  };
+  rebuildMenu();
+  killSwitch.subscribe(rebuildMenu);
+  return t;
 }
 
 function startCursorMirror(win: BrowserWindow): () => void {
@@ -368,6 +440,17 @@ void app.whenReady().then(async () => {
     else panelWindow.show();
   });
 
+  // §12: one fixed chord halts all automation instantly, from anywhere.
+  globalShortcut.register(KILL_SWITCH_SHORTCUT, () => killSwitch.halt('hotkey'));
+  tray = createKillSwitchTray();
+  killSwitch.subscribe((halted) => {
+    // Belt-and-suspenders visual: the overlay (the thing that visualizes automation)
+    // disappears the instant input is halted, so a halted state is never ambiguous.
+    overlayWindow?.setIgnoreMouseEvents(true, { forward: true });
+    if (halted) overlayWindow?.hide();
+    else overlayWindow?.show();
+  });
+
   registerAutomationHandlers({
     ipcMain,
     registry: proposalRegistry,
@@ -404,6 +487,7 @@ void app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  tray?.destroy();
 });
 
 app.on('window-all-closed', () => {

@@ -34,6 +34,13 @@ const copies = [
   ['app/panel/styles.css', 'app/panel/styles.css'],
   // tsc only emits .ts -> .js; the signed manifest fixture is plain data.
   ['gateway/policy/fixtures', 'gateway/policy/fixtures'],
+  // The compiled native addon (slice 1.8) — tsc never touches binaries, and
+  // windows.ts's requireAddon() resolves it relative to ITS OWN compiled
+  // location, so without this copy the real e2e lane can never find it and
+  // silently (if correctly) degrades to the mock bridge. Absent entirely on
+  // non-Windows or before `npm run build:native:win` — the existsSync guard
+  // below skips it, same as every other optional copy in this list.
+  ['app/platform/native/build', 'app/platform/native/build'],
 ];
 
 for (const [from, to] of copies) {
@@ -85,6 +92,13 @@ await esbuild.build({
   platform: 'browser',
   format: 'esm',
   target: 'chrome120',
+  // schemas.ts (imported by panel.ts) intentionally imports key-token constants
+  // from platform/key-tokens.ts, NOT platform/index.ts (slice 1.8) — index.ts
+  // also selects/loads the native Windows bridge (a real .node require +
+  // node:module's createRequire), and neither is resolvable for a browser
+  // target. No `external` override here on purpose: if a future change
+  // reintroduces that path, this build should fail loudly rather than emit a
+  // renderer bundle with an unresolvable import that only breaks at runtime.
   logLevel: 'info',
 });
 

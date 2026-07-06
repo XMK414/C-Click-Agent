@@ -6,7 +6,7 @@
 // mirror; these schemas are what actually runs at the trust boundary.
 
 import { z } from 'zod';
-import { ALLOWED_KEY_TOKENS } from '../platform/index.js';
+import { ALLOWED_KEY_TOKENS } from '../platform/key-tokens.js';
 import { MAX_GUIDED_STEPS } from '../models/types.js';
 
 const finiteInt = z.number().int().finite();

@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createMockBridge, type MockBridge } from '../../app/platform/mock.js';
-import { createPlatformBridge, UnsupportedPlatformError } from '../../app/platform/index.js';
+import { createPlatformBridge } from '../../app/platform/index.js';
 
 describe('mock platform bridge', () => {
   let bridge: MockBridge;
@@ -42,9 +42,11 @@ describe('mock platform bridge', () => {
 });
 
 describe('createPlatformBridge selector', () => {
-  it('throws typed error until native addons are built', () => {
-    expect(() => createPlatformBridge('win32')).toThrow(UnsupportedPlatformError);
-    expect(() => createPlatformBridge('darwin')).toThrow(UnsupportedPlatformError);
-    expect(() => createPlatformBridge('linux')).toThrow(UnsupportedPlatformError);
+  it('degrades to the mock bridge (never throws) on every platform without native deps', () => {
+    for (const platform of ['win32', 'darwin', 'linux'] as const) {
+      const sel = createPlatformBridge(platform);
+      expect(sel.degradedToMock).toBe(true);
+      expect(sel.bridge.getCursorPos()).toBeDefined();
+    }
   });
 });
