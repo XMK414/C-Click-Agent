@@ -71,14 +71,16 @@ test('panel CSP actually blocks an injected inline script from executing', async
 
 test('panel is genuinely clickable (accepts a click, unlike the overlay)', async () => {
   await expandPanel();
-  await launched.panel.locator('#provider').click();
-  // No throw = the click landed; a click-through window would never let this focus.
-  await expect(launched.panel.locator('#provider')).toBeFocused();
-  // .click() on a <select> opens its native OS dropdown (a genuine native popup on
-  // macOS, unlike selectOption() elsewhere in this file, which never opens it). Left
-  // open, afterEach's app.close() hangs waiting on that popup's run loop — deterministic
-  // on macOS CI, not a flake. Escape dismisses it before the app tries to quit.
-  await launched.panel.keyboard.press('Escape');
+  // A plain text input, not #provider (a <select>): clicking a <select> opens its
+  // native OS dropdown, and on macOS that's a genuine AppKit popup-menu tracking
+  // loop outside Chromium's normal event queue — a synthetic Escape keypress
+  // dispatched into the renderer doesn't reach it, so it's left open and
+  // afterEach's app.close() hangs waiting on it (reproduced deterministically
+  // across 3 CI runs; a targeted Escape fix did not resolve it). #prompt proves
+  // the identical thing — a click-through window could never focus it either —
+  // without ever opening a native popup on any OS.
+  await launched.panel.locator('#prompt').click();
+  await expect(launched.panel.locator('#prompt')).toBeFocused();
 });
 
 test('gate quiz UX end-to-end: real warning + redacted questions, wrong then right answers', async () => {
