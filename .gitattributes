@@ -1,0 +1,7 @@
+# The ToS-gate manifest fixture is cryptographically signed — git's autocrlf
+# line-ending conversion (the default on Windows, including GitHub's hosted
+# Windows runners) silently rewrites LF to CRLF on checkout, corrupting the
+# exact bytes the signature was computed over and failing verification with
+# ManifestSignatureError. -text disables that conversion unconditionally,
+# regardless of the checking-out machine's core.autocrlf setting.
+gateway/policy/fixtures/** -text
